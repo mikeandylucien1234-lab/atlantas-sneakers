@@ -3,8 +3,13 @@
 import Link from "next/link";
 import { Search, Heart, ShoppingCart, User, Menu } from "lucide-react";
 import { Navbar } from "./navbar";
+import { useCartStore } from "@/lib/store/cart-store";
+import { useWishlistStore } from "@/lib/store/wishlist-store";
 
 export function Header() {
+  const cartCount = useCartStore((s) => s.count);
+  const wishlistCount = useWishlistStore((s) => s.count);
+
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-[#eef0f3]">
       <div className="max-w-[1240px] mx-auto px-4 py-[14px] flex items-center gap-4 lg:gap-6">
@@ -28,16 +33,25 @@ export function Header() {
         {/* Icons */}
         <div className="flex items-center gap-5 lg:gap-6 shrink-0 ml-auto">
           <Link href="/wishlist" className="hidden sm:flex flex-col items-center gap-[3px] text-[#16181d] hover:text-[#2563eb] transition-colors">
-            <Heart className="w-[23px] h-[23px]" />
+            <span className="relative">
+              <Heart className="w-[23px] h-[23px]" />
+              {wishlistCount > 0 && (
+                <span className="absolute -top-[6px] -right-[9px] min-w-[17px] h-[17px] rounded-[999px] bg-[#ef4444] text-white text-[10px] font-bold flex items-center justify-center px-1 border-2 border-white">
+                  {wishlistCount}
+                </span>
+              )}
+            </span>
             <span className="text-[11px] font-semibold text-[#4b5563] hidden lg:block">Wishlist</span>
           </Link>
 
           <Link href="/cart" className="flex flex-col items-center gap-[3px] text-[#16181d] hover:text-[#2563eb] transition-colors">
             <span className="relative">
               <ShoppingCart className="w-[23px] h-[23px]" />
-              <span className="absolute -top-[6px] -right-[9px] min-w-[17px] h-[17px] rounded-[999px] bg-[#2563eb] text-white text-[10px] font-bold flex items-center justify-center px-1 border-2 border-white">
-                0
-              </span>
+              {cartCount > 0 && (
+                <span className="absolute -top-[6px] -right-[9px] min-w-[17px] h-[17px] rounded-[999px] bg-[#2563eb] text-white text-[10px] font-bold flex items-center justify-center px-1 border-2 border-white">
+                  {cartCount}
+                </span>
+              )}
             </span>
             <span className="text-[11px] font-semibold text-[#4b5563] hidden lg:block">Cart</span>
           </Link>

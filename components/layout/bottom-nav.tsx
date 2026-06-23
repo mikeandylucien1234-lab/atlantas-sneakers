@@ -4,22 +4,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, LayoutGrid, Heart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWishlistStore } from "@/lib/store/wishlist-store";
 
-const items = [
+const navItems = [
   { icon: Home, label: "Home", href: "/" },
   { icon: LayoutGrid, label: "Categories", href: "/categories" },
-  { icon: Heart, label: "Wishlist", href: "/wishlist", badge: 0 },
+  { icon: Heart, label: "Wishlist", href: "/wishlist", hasBadge: true },
   { icon: User, label: "Account", href: "/account" },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
+  const wishlistCount = useWishlistStore((s) => s.count);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-[#eef0f3] shadow-[0_-4px_20px_rgba(16,24,40,.08)] md:hidden pb-[env(safe-area-inset-bottom)]">
       <div className="grid grid-cols-4 max-w-[480px] mx-auto px-2 py-2">
-        {items.map(({ icon: Icon, label, href, badge }) => {
+        {navItems.map(({ icon: Icon, label, href, hasBadge }) => {
           const isActive = pathname === href;
+          const badge = hasBadge ? wishlistCount : 0;
           return (
             <Link
               key={href}
@@ -34,7 +37,7 @@ export function BottomNav() {
                   className="w-6 h-6"
                   fill={isActive ? "currentColor" : "none"}
                 />
-                {badge !== undefined && badge > 0 && (
+                {badge > 0 && (
                   <span className="absolute -top-[6px] -right-[10px] min-w-[16px] h-[16px] rounded-[999px] bg-[#2563eb] text-white text-[9px] font-bold flex items-center justify-center px-[3px] border-2 border-white">
                     {badge}
                   </span>

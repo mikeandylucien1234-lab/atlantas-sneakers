@@ -6,6 +6,7 @@ import { Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "./badge";
 import { PriceDisplay } from "./price-display";
+import { useWishlistStore } from "@/lib/store/wishlist-store";
 
 type ProductCardProps = {
   id: string;
@@ -17,12 +18,11 @@ type ProductCardProps = {
   image: string;
   isNew?: boolean;
   isFeatured?: boolean;
-  isWishlisted?: boolean;
-  onToggleWishlist?: () => void;
   className?: string;
 };
 
 export function ProductCard({
+  id,
   slug,
   name,
   brand,
@@ -31,10 +31,10 @@ export function ProductCard({
   image,
   isNew,
   isFeatured,
-  isWishlisted,
-  onToggleWishlist,
   className,
 }: ProductCardProps) {
+  const toggleItem = useWishlistStore((s) => s.toggleItem);
+  const isWishlisted = useWishlistStore((s) => s.isInWishlist(id));
   const discount = comparePrice ? Math.round(((comparePrice - price) / comparePrice) * 100) : 0;
 
   return (
@@ -57,7 +57,7 @@ export function ProductCard({
 
       <button
         type="button"
-        onClick={onToggleWishlist}
+        onClick={() => toggleItem({ id: crypto.randomUUID(), productId: id, name, image, price })}
         className="absolute top-2 right-2 h-[30px] w-[30px] flex items-center justify-center rounded-full bg-white/[.92] shadow-[0_2px_7px_rgba(16,24,40,.16)] hover:bg-white transition-all duration-150 cursor-pointer"
       >
         <Heart

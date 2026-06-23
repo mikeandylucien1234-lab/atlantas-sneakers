@@ -3,36 +3,48 @@
 
 :root {
   --color-primary: #2563eb;
-  --color-background: #0a0b0d;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-dark: #1e3a8a;
+  --color-background: #f4f5f7;
+  --color-surface: #ffffff;
   --color-text: #16181d;
-  --color-muted: #6b7280;
+  --color-text-dark: #0a0b0d;
+  --color-text-secondary: #5b6472;
+  --color-text-muted: #9aa3ad;
+  --color-text-light: #aab1ba;
   --color-border: #eef0f3;
+  --color-border-input: #e4e7eb;
+  --color-success: #16a34a;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
 
-  --radius-sm: 8px;
+  --radius-sm: 9px;
   --radius-md: 14px;
   --radius-lg: 18px;
+  --radius-button: 13px;
   --radius-full: 999px;
 
-  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --shadow-card: 0 12px 26px rgba(16, 24, 40, 0.12);
+  --shadow-elevated: 0 14px 30px rgba(16, 24, 40, 0.2);
+  --shadow-subtle: 0 2px 7px rgba(16, 24, 40, 0.16);
+  --shadow-blue: 0 10px 22px rgba(37, 99, 235, 0.3);
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
 
 @theme inline {
   --color-primary: var(--color-primary);
   --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
   --color-text: var(--color-text);
-  --color-muted: var(--color-muted);
   --color-border: var(--color-border);
   --font-sans: var(--font-sans);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-full: var(--radius-full);
 }
 
 body {
   font-family: var(--font-sans);
   color: var(--color-text);
-  background: #ffffff;
+  background: var(--color-background);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

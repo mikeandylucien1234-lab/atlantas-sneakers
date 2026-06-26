@@ -1,0 +1,175 @@
+import { createClient } from "./client";
+import type { Product, Category, Brand, FlashDeal } from "@/types";
+
+const supabase = createClient();
+
+const PRODUCT_SELECT = "*, brand:brands(*), category:categories(*), variants:product_variants(*)";
+
+export type ProductFilters = {
+  brandSlugs?: string[];
+  categorySlugs?: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  isNew?: boolean;
+  isFeatured?: boolean;
+  sort?: "price_asc" | "price_desc" | "newest" | "featured" | "best_selling";
+  limit?: number;
+  offset?: number;
+  search?: string;
+};
+
+export async function getProducts(filters?: ProductFilters) {
+  let query = supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("status", "active");
+
+  if (filters?.isNew) query = query.eq("is_new", true);
+  if (filters?.isFeatured) query = query.eq("is_featured", true);
+  if (filters?.minPrice != null) query = query.gte("price", filters.minPrice);
+  if (filters?.maxPrice != null) query = query.lte("price", filters.maxPrice);
+  if (filters?.search) query = query.textSearch("fts", filters.search, { type: "websearch" });
+
+  switch (filters?.sort) {
+    case "price_asc": query = query.order("price", { ascending: true }); break;
+    case "price_desc": query = query.order("price", { ascending: false }); break;
+    case "newest": query = query.order("created_at", { ascending: false }); break;
+    default: query = query.order("is_featured", { ascending: false }).order("created_at", { ascending: false });
+  }
+
+  if (filters?.limit) query = query.limit(filters.limit);
+  if (filters?.offset) query = query.range(filters.offset, filters.offset + (filters.limit ?? 20) - 1);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  let products = data as Product[];
+
+  if (filters?.brandSlugs?.length) {
+    products = products.filter((p) => p.brand && filters.brandSlugs!.includes(p.brand.slug));
+  }
+  if (filters?.categorySlugs?.length) {
+    products = products.filter((p) => p.category && filters.categorySlugs!.includes(p.category.slug));
+  }
+
+  return products;
+}
+
+export async function getProductBySlug(slug: string) {
+  const { data, error } = await supabase
+    .from("products")
+    .select(`${PRODUCT_SELECT}, reviews(*, profile:profiles(full_name, avatar_url))`)
+    .eq("slug", slug)
+    .eq("status", "active")
+    .single();
+  if (error) throw error;
+  return data as Product & { reviews: Array<{ id: string; rating: number; title: string | null; comment: string | null; created_at: string; profile: { full_name: string | null; avatar_url: string | null } | null }> };
+}
+
+export async function getCategories() {
+  const { data, error } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("is_active", true)
+    .order("name");
+  if (error) throw error;
+  return data as Category[];
+}
+
+export async function getBrands() {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("*")
+    .eq("is_active", true)
+    .order("name");
+  if (error) throw error;
+  return data as Brand[];
+}
+
+export async function getFeaturedProducts() {
+  return getProducts({ isFeatured: true, limit: 8 });
+}
+
+export async function getNewArrivals() {
+  return getProducts({ isNew: true, sort: "newest", limit: 8 });
+}
+
+export async function getBestSellers() {
+  const { data, error } = await supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("status", "active")
+    .eq("is_featured", true)
+    .order("created_at", { ascending: true })
+    .limit(8);
+  if (error) throw error;
+  return data as Product[];
+}
+
+export async function getFlashDeals() {
+  const { data, error } = await supabase
+    .from("flash_deals")
+    .select("*, product:products(*, brand:brands(*), category:categories(*))")
+    .eq("is_active", true)
+    .gte("ends_at", new Date().toISOString())
+    .lte("starts_at", new Date().toISOString());
+  if (error) throw error;
+  return data as FlashDeal[];
+}
+
+export async function searchProducts(query: string) {
+  return getProducts({ search: query, limit: 20 });
+}
+
+export async function getProductsByCategory(slug: string) {
+  const { data: category } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("slug", slug)
+    .single();
+  if (!category) return [];
+
+  const { data, error } = await supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("status", "active")
+    .eq("category_id", category.id)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data as Product[];
+}
+
+export async function getRelatedProducts(productId: string, categoryId: string | null) {
+  let query = supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("status", "active")
+    .neq("id", productId)
+    .limit(5);
+
+  if (categoryId) query = query.eq("category_id", categoryId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data as Product[];
+}
+
+export async function validateCoupon(code: string, total: number) {
+  const { data, error } = await supabase
+    .from("coupons")
+    .select("*")
+    .eq("code", code.toUpperCase())
+    .eq("is_active", true)
+    .single();
+
+  if (error || !data) return { valid: false, message: "Invalid coupon code" } as const;
+
+  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+    return { valid: false, message: "This coupon has expired" } as const;
+  }
+  if (total < Number(data.min_order)) {
+    return { valid: false, message: `Minimum order of $${data.min_order} required` } as const;
+  }
+
+  return { valid: true, coupon: data } as const;
+}

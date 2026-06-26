@@ -1,23 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Flame, Clock } from "lucide-react";
 import { ProductCard } from "@/components/ui/product-card";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-
-const filters = ["All", "Sneakers", "Clothing", "Tech"];
-
-const dealProducts = [
-  { id: "d1", slug: "nike-air-max-97", name: "Nike Air Max 97", brand: "Nike", price: 99.99, comparePrice: 179.99, image: "/placeholder.svg", category: "Sneakers" },
-  { id: "d2", slug: "adidas-yeezy-350", name: "Adidas Yeezy Boost 350", brand: "Adidas", price: 149.99, comparePrice: 249.99, image: "/placeholder.svg", category: "Sneakers" },
-  { id: "d3", slug: "jordan-11-retro", name: "Jordan 11 Retro", brand: "Jordan", price: 139.99, comparePrice: 219.99, image: "/placeholder.svg", category: "Sneakers" },
-  { id: "d4", slug: "nike-tech-fleece", name: "Nike Tech Fleece Joggers", brand: "Nike", price: 59.99, comparePrice: 109.99, image: "/placeholder.svg", category: "Clothing" },
-  { id: "d5", slug: "beats-studio", name: "Beats Studio Pro", brand: "Beats", price: 199.99, comparePrice: 349.99, image: "/placeholder.svg", category: "Tech" },
-  { id: "d6", slug: "nb-990v6", name: "New Balance 990v6", brand: "New Balance", price: 129.99, comparePrice: 199.99, image: "/placeholder.svg", category: "Sneakers" },
-  { id: "d7", slug: "adidas-track-jacket", name: "Adidas Originals Track Jacket", brand: "Adidas", price: 44.99, comparePrice: 79.99, image: "/placeholder.svg", category: "Clothing" },
-  { id: "d8", slug: "apple-airpods", name: "Apple AirPods Pro 2", brand: "Apple", price: 179.99, comparePrice: 249.99, image: "/placeholder.svg", category: "Tech" },
-];
+import { ProductCardSkeleton } from "@/components/ui/skeleton";
+import { getFlashDeals, getProducts } from "@/lib/supabase/queries";
+import { useQuery } from "@/lib/hooks/use-query";
+import type { Product } from "@/types";
 
 function useCountdown() {
   const [time, setTime] = useState({ h: 0, m: 0, s: 0 });
@@ -52,16 +42,34 @@ function CountdownBox({ value, label }: { value: number; label: string }) {
 }
 
 export default function DealsPage() {
-  const [activeFilter, setActiveFilter] = useState("All");
   const { h, m, s } = useCountdown();
 
-  const filtered = activeFilter === "All"
-    ? dealProducts
-    : dealProducts.filter((p) => p.category === activeFilter);
+  const { data: flashDeals, loading: dealsLoading } = useQuery(() => getFlashDeals(), []);
+  const { data: saleProducts, loading: productsLoading } = useQuery(
+    () => getProducts({ sort: "price_asc", limit: 8 }),
+    []
+  );
+
+  const loading = dealsLoading || productsLoading;
+
+  const dealProducts: Array<Product & { dealPrice?: number }> = [];
+  if (flashDeals) {
+    for (const deal of flashDeals) {
+      if (deal.product) {
+        dealProducts.push({ ...deal.product as Product, dealPrice: Number(deal.deal_price) });
+      }
+    }
+  }
+  if (saleProducts) {
+    for (const p of saleProducts) {
+      if (p.compare_price && !dealProducts.find((d) => d.id === p.id)) {
+        dealProducts.push(p);
+      }
+    }
+  }
 
   return (
     <div className="mt-4 mb-6">
-      {/* Hero Banner */}
       <div className="bg-[linear-gradient(135deg,#1a0606,#561414)] rounded-[18px] px-6 sm:px-10 py-8 text-white">
         <div className="flex items-center gap-2 mb-2">
           <Flame className="w-[24px] h-[24px] text-[#f97316]" />
@@ -81,30 +89,28 @@ export default function DealsPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2 mt-6 overflow-x-auto pb-1 scrollbar-hide">
-        {filters.map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setActiveFilter(f)}
-            className={cn(
-              "px-5 py-2.5 rounded-[999px] text-[13px] font-bold transition-colors cursor-pointer whitespace-nowrap",
-              activeFilter === f
-                ? "bg-[#2563eb] text-white"
-                : "bg-white border border-[#e4e7eb] text-[#5b6472] hover:border-[#2563eb] hover:text-[#2563eb]"
-            )}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      {/* Products */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-[14px] mt-5">
-        {filtered.map((p) => (
-          <ProductCard key={p.id} {...p} />
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-[14px] mt-6">
+        {loading
+          ? Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={i} />)
+          : dealProducts.map((p) => (
+              <ProductCard
+                key={p.id}
+                id={p.id}
+                slug={p.slug}
+                name={p.name}
+                brand={p.brand?.name ?? ""}
+                price={p.dealPrice ?? Number(p.price)}
+                comparePrice={p.dealPrice ? Number(p.price) : p.compare_price ? Number(p.compare_price) : undefined}
+                image={p.images?.[0] ?? "/placeholder.svg"}
+              />
+            ))
+        }
+        {!loading && dealProducts.length === 0 && (
+          <div className="col-span-full text-center py-12">
+            <p className="text-[14px] text-[#5b6472]">No active deals right now. Check back soon!</p>
+            <Link href="/shop" className="text-[14px] font-bold text-[#2563eb] hover:underline mt-2 inline-block">Shop All</Link>
+          </div>
+        )}
       </div>
     </div>
   );

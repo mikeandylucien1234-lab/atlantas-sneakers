@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { User, Package, Heart, MapPin, CreditCard, Trophy, Settings, LogOut, ChevronRight, Edit3, Star } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, Package, Heart, MapPin, CreditCard, Trophy, Settings, LogOut, ChevronRight, Edit3, Star, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/store/auth-store";
+import Link from "next/link";
 
 const sidebarItems = [
   { id: "profile", label: "Profile", icon: User },
@@ -17,12 +18,14 @@ const sidebarItems = [
   { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
-const mockOrders = [
-  { id: "ATL-K8F3M2", date: "Jun 15, 2026", status: "Delivered", total: 329.97, items: 3 },
-  { id: "ATL-P9X7N1", date: "Jun 8, 2026", status: "Shipped", total: 159.99, items: 1 },
-  { id: "ATL-R2W5Q4", date: "May 22, 2026", status: "Delivered", total: 249.98, items: 2 },
-  { id: "ATL-T6Y1J8", date: "May 10, 2026", status: "Cancelled", total: 89.99, items: 1 },
-];
+interface Order {
+  id: string;
+  order_number: string;
+  status: string;
+  total: number;
+  created_at: string;
+  items: Array<{ id: string; quantity: number; price: number; product: { name: string; slug: string; images: string[] } | null }>;
+}
 
 const mockAddresses = [
   { id: "1", label: "Home", name: "John Doe", line1: "123 Peachtree St NE", city: "Atlanta", state: "GA", zip: "30301", country: "US", isDefault: true },
@@ -41,10 +44,25 @@ type Section = typeof sidebarItems[number]["id"];
 export default function AccountPage() {
   const [activeSection, setActiveSection] = useState<Section>("profile");
   const signOut = useAuthStore((s) => s.signOut);
+  const user = useAuthStore((s) => s.user);
 
   const [fullName, setFullName] = useState("John Doe");
   const [email] = useState("john@example.com");
   const [phone, setPhone] = useState("+1 (555) 123-4567");
+
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeSection === "orders" && user) {
+      setOrdersLoading(true);
+      fetch("/api/orders")
+        .then((r) => r.json())
+        .then((d) => setOrders(d.orders ?? []))
+        .catch(() => setOrders([]))
+        .finally(() => setOrdersLoading(false));
+    }
+  }, [activeSection, user]);
 
   const inputCls = "w-full h-[46px] rounded-[12px] border-[1.5px] border-[#e4e7eb] bg-[#fbfbfc] px-4 text-[14px] font-medium text-[#16181d] placeholder:text-[#9aa3ad] outline-none focus:border-[#2563eb]";
 
@@ -131,36 +149,49 @@ export default function AccountPage() {
           {activeSection === "orders" && (
             <>
               <h2 className="text-[18px] font-extrabold text-[#16181d] mb-5">My Orders</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-[#eef0f3]">
-                      <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Order</th>
-                      <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Date</th>
-                      <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Status</th>
-                      <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Total</th>
-                      <th className="text-right text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mockOrders.map((o) => (
-                      <tr key={o.id} className="border-b border-[#eef0f3] last:border-0">
-                        <td className="py-3 px-2 text-[13px] font-bold text-[#2563eb]">{o.id}</td>
-                        <td className="py-3 px-2 text-[13px] text-[#5b6472]">{o.date}</td>
-                        <td className="py-3 px-2">
-                          <span className={cn("inline-block px-2.5 py-1 rounded-[6px] text-[11px] font-bold", statusColor[o.status])}>
-                            {o.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-[13px] font-bold text-[#16181d]">${o.total.toFixed(2)}</td>
-                        <td className="py-3 px-2 text-right">
-                          <button type="button" className="text-[12px] font-bold text-[#2563eb] hover:underline cursor-pointer">View</button>
-                        </td>
+              {ordersLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-[#2563eb]" />
+                </div>
+              ) : orders.length === 0 ? (
+                <div className="text-center py-12">
+                  <Package className="w-10 h-10 text-[#d1d5db] mx-auto mb-3" />
+                  <p className="text-[14px] text-[#5b6472]">No orders yet.</p>
+                  <Link href="/shop" className="text-[13px] font-bold text-[#2563eb] hover:underline mt-2 inline-block">Start Shopping</Link>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#eef0f3]">
+                        <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Order</th>
+                        <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Date</th>
+                        <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Status</th>
+                        <th className="text-left text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Total</th>
+                        <th className="text-right text-[12px] font-bold text-[#9aa3ad] uppercase tracking-[.04em] py-3 px-2">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {orders.map((o) => (
+                        <tr key={o.id} className="border-b border-[#eef0f3] last:border-0">
+                          <td className="py-3 px-2 text-[13px] font-bold text-[#2563eb]">{o.order_number}</td>
+                          <td className="py-3 px-2 text-[13px] text-[#5b6472]">{new Date(o.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                          <td className="py-3 px-2">
+                            <span className={cn("inline-block px-2.5 py-1 rounded-[6px] text-[11px] font-bold capitalize", statusColor[o.status] ?? "bg-[#f7f8fa] text-[#5b6472]")}>
+                              {o.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-[13px] font-bold text-[#16181d]">${o.total.toFixed(2)}</td>
+                          <td className="py-3 px-2 text-right space-x-3">
+                            <Link href={`/track?order=${o.order_number}`} className="text-[12px] font-bold text-[#2563eb] hover:underline">Track</Link>
+                            <button type="button" className="text-[12px] font-bold text-[#5b6472] hover:underline cursor-pointer">Details</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
 

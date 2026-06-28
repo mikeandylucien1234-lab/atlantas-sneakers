@@ -24,6 +24,7 @@ import {
   Truck,
   RotateCcw,
   CreditCard,
+  DollarSign,
   Receipt,
   Search,
   BarChart2,
@@ -103,7 +104,9 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "shipping", label: "Shipping", icon: Truck },
       { id: "returns", label: "Returns", icon: RotateCcw },
-      { id: "payments", label: "Payments", icon: CreditCard },
+      { id: "payments", label: "Payment Settings", icon: CreditCard },
+      { id: "paymentsmgmt", label: "Payments", icon: DollarSign },
+      { id: "paymentlogs", label: "Payment Logs", icon: ClipboardList },
       { id: "tax", label: "Tax", icon: Receipt },
     ],
   },

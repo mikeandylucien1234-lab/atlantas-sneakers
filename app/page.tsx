@@ -7,6 +7,7 @@ import { TrendingNow } from "@/components/sections/trending-now";
 import { FlashSales } from "@/components/sections/flash-sales";
 import { BestSellersNewArrivals } from "@/components/sections/best-sellers-new-arrivals";
 import { CollectionBanners } from "@/components/sections/collection-banners";
+import { PromoStrips } from "@/components/sections/promo-strips";
 import { TrustBadges } from "@/components/sections/trust-badges";
 import { NewsletterSection } from "@/components/sections/newsletter-section";
 
@@ -19,6 +20,7 @@ export default function HomePage() {
       <TrendingNow />
       <FlashSales />
       <BestSellersNewArrivals />
+      <PromoStrips />
       <CollectionBanners />
       <TrustBadges />
       <NewsletterSection />

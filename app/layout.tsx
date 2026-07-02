@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { ToastProvider } from "@/components/ui/toast";
+import { AuthListener } from "@/components/auth-listener";
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -27,6 +28,7 @@ export default function RootLayout({
     <html lang="en" className={`${plusJakarta.variable} h-full`}>
       <body className="min-h-full flex flex-col font-sans bg-[#f4f5f7] text-[#16181d] antialiased">
         <ToastProvider>
+          <AuthListener />
           <AnnouncementBar />
           <Header />
           <main className="flex-1">

@@ -21,7 +21,7 @@ export function generateIdempotencyKey(
 ): string {
   return crypto
     .createHash("sha256")
-    .update(`${orderId}:${gateway}:${Date.now()}`)
+    .update(`${orderId}:${gateway}`)
     .digest("hex");
 }
 

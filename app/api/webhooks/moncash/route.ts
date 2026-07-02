@@ -8,16 +8,19 @@ export async function POST(request: NextRequest) {
   const signature = request.headers.get("x-moncash-signature") ?? "";
   const secret = process.env.MONCASH_WEBHOOK_SECRET!;
 
-  if (secret && secret !== "your_webhook_secret") {
-    if (!verifyWebhookSignature(body, signature, secret)) {
-      await logPaymentEvent({
-        gateway: "moncash",
-        eventType: "webhook.signature_failed",
-        request: { body: body.slice(0, 500) },
-        ipAddress: request.headers.get("x-forwarded-for") ?? undefined,
-      });
-      return Response.json({ error: "Invalid signature" }, { status: 400 });
-    }
+  if (!secret) {
+    console.error("MONCASH_WEBHOOK_SECRET is not configured");
+    return Response.json({ error: "Webhook secret not configured" }, { status: 500 });
+  }
+
+  if (!verifyWebhookSignature(body, signature, secret)) {
+    await logPaymentEvent({
+      gateway: "moncash",
+      eventType: "webhook.signature_failed",
+      request: { body: body.slice(0, 500) },
+      ipAddress: request.headers.get("x-forwarded-for") ?? undefined,
+    });
+    return Response.json({ error: "Invalid signature" }, { status: 400 });
   }
 
   try {

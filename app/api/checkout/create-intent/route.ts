@@ -5,37 +5,91 @@ import { cookies } from "next/headers";
 
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll(); },
+          setAll(cookiesToSet) {
+            try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
+          },
+        },
+      }
+    );
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { items, shippingCost, couponCode, userId } = body as {
+    const { items, shippingCost, couponCode } = body as {
       items: Array<{ productId: string; variantId: string | null; name: string; price: number; quantity: number }>;
       shippingCost: number;
       couponCode?: string;
-      userId?: string;
     };
 
     if (!items?.length) {
       return Response.json({ error: "No items provided" }, { status: 400 });
     }
 
-    let subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    // Look up actual prices from the database
+    const productIds = [...new Set(items.map((i) => i.productId))];
+    const { data: products, error: productsError } = await supabase
+      .from("products")
+      .select("id, price")
+      .in("id", productIds);
+
+    if (productsError || !products) {
+      return Response.json({ error: "Failed to verify product prices" }, { status: 500 });
+    }
+
+    const productPriceMap = new Map(products.map((p) => [p.id, Number(p.price)]));
+
+    // Look up variant prices if any items have variants
+    const variantIds = items.filter((i) => i.variantId).map((i) => i.variantId!);
+    const variantPriceMap = new Map<string, number>();
+
+    if (variantIds.length > 0) {
+      const { data: variants } = await supabase
+        .from("product_variants")
+        .select("id, price")
+        .in("id", variantIds);
+
+      if (variants) {
+        for (const v of variants) {
+          if (v.price != null) {
+            variantPriceMap.set(v.id, Number(v.price));
+          }
+        }
+      }
+    }
+
+    // Calculate real subtotal from DB prices
+    let subtotal = 0;
+    for (const item of items) {
+      const dbPrice = item.variantId
+        ? variantPriceMap.get(item.variantId) ?? productPriceMap.get(item.productId)
+        : productPriceMap.get(item.productId);
+
+      if (dbPrice === undefined) {
+        return Response.json({ error: `Product not found: ${item.productId}` }, { status: 400 });
+      }
+
+      // Reject if client-supplied price doesn't match DB price
+      if (Math.abs(dbPrice - item.price) > 0.01) {
+        return Response.json({ error: "Price mismatch detected" }, { status: 400 });
+      }
+
+      subtotal += dbPrice * item.quantity;
+    }
+
     let discount = 0;
     let couponData = null;
 
     if (couponCode) {
-      const cookieStore = await cookies();
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          cookies: {
-            getAll() { return cookieStore.getAll(); },
-            setAll(cookiesToSet) {
-              try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
-            },
-          },
-        }
-      );
-
       const { data } = await supabase
         .from("coupons")
         .select("*")
@@ -66,7 +120,7 @@ export async function POST(request: NextRequest) {
       amount: amountInCents,
       currency: "usd",
       metadata: {
-        userId: userId ?? "guest",
+        userId: user.id,
         itemCount: String(items.length),
         couponCode: couponCode ?? "",
         shippingCost: String(shippingCost),

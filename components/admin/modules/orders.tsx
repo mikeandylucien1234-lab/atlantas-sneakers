@@ -29,6 +29,7 @@ export function AdminOrders({ dark }: Props) {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [drawerOrder, setDrawerOrder] = useState<Order | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const p = dark ? "bg-[#171c24]" : "bg-white";
   const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
@@ -38,13 +39,20 @@ export function AdminOrders({ dark }: Props) {
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("orders")
-      .select("*, items:order_items(*, product:products(name, slug, images))")
-      .order("created_at", { ascending: false });
-    setOrders((data as Order[]) ?? []);
-    setLoading(false);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { data, error: err } = await supabase
+        .from("orders")
+        .select("*, items:order_items(*, product:products(name, slug, images))")
+        .order("created_at", { ascending: false });
+      if (err) throw new Error(err.message);
+      setOrders((data as Order[]) ?? []);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load orders");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
@@ -145,6 +153,14 @@ export function AdminOrders({ dark }: Props) {
           <button className="px-3 py-1 rounded-lg bg-[#ef4444] hover:bg-[#dc2626] text-xs flex items-center gap-1">
             <Trash2 className="w-3 h-3" /> Delete
           </button>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="rounded-[14px] border border-red-300 bg-red-50 p-4 text-sm text-red-600">
+          {error}
+          <button onClick={fetchOrders} className="ml-3 underline">Retry</button>
         </div>
       )}
 

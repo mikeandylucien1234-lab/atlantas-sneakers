@@ -41,29 +41,6 @@ const text = (d: boolean) => t(d, "#16181d", "#e7ebf0");
 const sub = (d: boolean) => t(d, "#8a929c", "#8b95a3");
 const border = (d: boolean) => t(d, "#eef0f3", "#252c36");
 
-/* ─── mock data ─── */
-const revenueData = [
-  { month: "Jul", revenue: 4200 },
-  { month: "Aug", revenue: 5800 },
-  { month: "Sep", revenue: 4900 },
-  { month: "Oct", revenue: 7200 },
-  { month: "Nov", revenue: 8100 },
-  { month: "Dec", revenue: 11400 },
-  { month: "Jan", revenue: 9600 },
-  { month: "Feb", revenue: 7800 },
-  { month: "Mar", revenue: 8900 },
-  { month: "Apr", revenue: 10200 },
-  { month: "May", revenue: 11800 },
-  { month: "Jun", revenue: 13500 },
-];
-
-const categoryData = [
-  { name: "Running", value: 35 },
-  { name: "Basketball", value: 25 },
-  { name: "Casual", value: 20 },
-  { name: "Training", value: 12 },
-  { name: "Slides", value: 8 },
-];
 const categoryColors = ["#2563eb", "#7c3aed", "#16a34a", "#ea7317", "#ef4444"];
 
 const countryData = [
@@ -74,35 +51,41 @@ const countryData = [
   { country: "Canada", pct: 8 },
 ];
 
-const mockTopProducts = [
-  { rank: 1, name: 'Air Max 90 "Triple White"', sales: 324, revenue: 42120 },
-  { rank: 2, name: "Ultraboost 22", sales: 281, revenue: 50580 },
-  { rank: 3, name: "New Balance 550", sales: 256, revenue: 28160 },
-  { rank: 4, name: "Dunk Low Panda", sales: 234, revenue: 25740 },
-  { rank: 5, name: "Yeezy Slide", sales: 198, revenue: 13860 },
-];
-
-const recentActivity = [
-  { time: "2 min ago", text: "New order #1042 placed", color: "#2563eb" },
-  { time: "15 min ago", text: "Product 'AJ1 Retro' restocked", color: "#16a34a" },
-  { time: "1 hr ago", text: "Customer review submitted", color: "#7c3aed" },
-  { time: "3 hr ago", text: "Order #1039 shipped", color: "#ea7317" },
-  { time: "5 hr ago", text: "Flash deal expired", color: "#ef4444" },
-];
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  return `${Math.floor(hrs / 24)} day(s) ago`;
+}
 
 /* ─── component ─── */
 type Props = { dark: boolean; onNavigate: (module: string) => void };
 
 export default function DashboardModule({ dark, onNavigate }: Props) {
-  const [revenue, setRevenue] = useState(128450);
-  const [ordersCount, setOrdersCount] = useState(1284);
-  const [customersCount, setCustomersCount] = useState(5720);
-  const [productsCount, setProductsCount] = useState(342);
+  const [revenue, setRevenue] = useState(0);
+  const [ordersCount, setOrdersCount] = useState(0);
+  const [customersCount, setCustomersCount] = useState(0);
+  const [productsCount, setProductsCount] = useState(0);
   const [lowStock, setLowStock] = useState<
     { name: string; size: string; stock: number }[]
   >([]);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
-  const [topProducts, setTopProducts] = useState(mockTopProducts);
+  const [topProducts, setTopProducts] = useState<
+    { rank: number; name: string; sales: number; revenue: number }[]
+  >([]);
+  const [revenueData, setRevenueData] = useState<
+    { month: string; revenue: number }[]
+  >([]);
+  const [categoryData, setCategoryData] = useState<
+    { name: string; value: number }[]
+  >([]);
+  const [recentActivity, setRecentActivity] = useState<
+    { time: string; text: string; color: string }[]
+  >([]);
+  const [dashLoading, setDashLoading] = useState(true);
 
   useEffect(() => {
     const supabase = createClient();
@@ -113,11 +96,26 @@ export default function DashboardModule({ dark, onNavigate }: Props) {
         const { data: orders } = await supabase
           .from("orders")
           .select("id, total, status, order_number, created_at, user_id, payment_status, subtotal, shipping_cost, discount, shipping_address");
-        if (orders && orders.length > 0) {
+        if (orders) {
           setOrdersCount(orders.length);
           setRevenue(
             orders.reduce((s: number, o: { total: number }) => s + o.total, 0)
           );
+
+          /* revenue chart: last 7 days */
+          const now = new Date();
+          const last7: { month: string; revenue: number }[] = [];
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            const dayRevenue = orders
+              .filter((o: any) => o.created_at?.slice(0, 10) === key)
+              .reduce((s: number, o: any) => s + (o.total ?? 0), 0);
+            last7.push({ month: label, revenue: dayRevenue });
+          }
+          setRevenueData(last7);
         }
 
         /* products count */
@@ -170,13 +168,54 @@ export default function DashboardModule({ dark, onNavigate }: Props) {
             topProds.map((p: any, i: number) => ({
               rank: i + 1,
               name: p.name,
-              sales: mockTopProducts[i]?.sales ?? 0,
-              revenue: mockTopProducts[i]?.revenue ?? 0,
+              sales: 0,
+              revenue: 0,
+            }))
+          );
+        }
+
+        /* category breakdown */
+        const { data: prods } = await supabase
+          .from("products")
+          .select("category:categories(name)");
+        if (prods && prods.length > 0) {
+          const counts: Record<string, number> = {};
+          prods.forEach((p: any) => {
+            const cat = p.category?.name ?? "Uncategorized";
+            counts[cat] = (counts[cat] ?? 0) + 1;
+          });
+          const sorted = Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5);
+          const total = sorted.reduce((s, [, v]) => s + v, 0);
+          setCategoryData(
+            sorted.map(([name, count]) => ({
+              name,
+              value: total > 0 ? Math.round((count / total) * 100) : 0,
+            }))
+          );
+        }
+
+        /* recent activity */
+        const { data: activityLogs } = await supabase
+          .from("activity_logs")
+          .select("description, created_at")
+          .order("created_at", { ascending: false })
+          .limit(5);
+        if (activityLogs && activityLogs.length > 0) {
+          const colors = ["#2563eb", "#16a34a", "#7c3aed", "#ea7317", "#ef4444"];
+          setRecentActivity(
+            activityLogs.map((a: any, i: number) => ({
+              time: timeAgo(a.created_at),
+              text: a.description ?? "Activity",
+              color: colors[i % colors.length],
             }))
           );
         }
       } catch {
-        /* keep fallback mock values */
+        /* keep fallback empty values */
+      } finally {
+        setDashLoading(false);
       }
     }
 
@@ -251,6 +290,15 @@ export default function DashboardModule({ dark, onNavigate }: Props) {
       </div>
     );
   };
+
+  if (dashLoading) {
+    return (
+      <div style={{ background: bg(dark), minHeight: "100vh", padding: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: 24, height: 24, border: "2px solid #2563eb", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={{ background: bg(dark), minHeight: "100vh", padding: 24 }}>
@@ -331,7 +379,7 @@ export default function DashboardModule({ dark, onNavigate }: Props) {
             <div style={{ fontSize: 16, fontWeight: 600, color: text(dark) }}>
               Sales Analytics
             </div>
-            <div style={{ fontSize: 13, color: sub(dark) }}>Last 12 months</div>
+            <div style={{ fontSize: 13, color: sub(dark) }}>Last 7 days</div>
           </div>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={revenueData}>

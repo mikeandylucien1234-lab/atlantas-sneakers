@@ -21,12 +21,14 @@ export function AdminPaymentLogs({ dark }: { dark: boolean }) {
   const [loading, setLoading] = useState(true);
   const [gatewayFilter, setGatewayFilter] = useState("all");
   const [page, setPage] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const perPage = 30;
-
-  const supabase = createClient();
 
   const fetchLogs = async () => {
     setLoading(true);
+    setError(null);
+    try {
+    const supabase = createClient();
     let query = supabase
       .from("payment_logs")
       .select("id,payment_id,gateway,event_type,status_code,latency_ms,error,created_at")
@@ -35,9 +37,14 @@ export function AdminPaymentLogs({ dark }: { dark: boolean }) {
 
     if (gatewayFilter !== "all") query = query.eq("gateway", gatewayFilter);
 
-    const { data } = await query;
+    const { data, error: err } = await query;
+    if (err) throw new Error(err.message);
     setLogs((data as unknown as LogEntry[]) ?? []);
-    setLoading(false);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load logs");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchLogs(); }, [page, gatewayFilter]);
@@ -70,6 +77,13 @@ export function AdminPaymentLogs({ dark }: { dark: boolean }) {
             <RefreshCw className={cn("w-4 h-4", sub)} />
           </button>
         </div>
+
+        {error && (
+          <div className="mx-4 mt-4 rounded-[14px] border border-red-300 bg-red-50 p-4 text-sm text-red-600">
+            {error}
+            <button onClick={fetchLogs} className="ml-3 underline">Retry</button>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left">

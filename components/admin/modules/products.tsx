@@ -21,6 +21,7 @@ export function AdminProducts({ dark }: Props) {
   const [page, setPage] = useState(1);
   const [drawerProduct, setDrawerProduct] = useState<Product | null | undefined>(undefined);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   const p = dark ? "bg-[#171c24]" : "bg-white";
   const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
@@ -30,16 +31,23 @@ export function AdminProducts({ dark }: Props) {
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
-    const [{ data: prods }, { data: cats }, { data: brs }] = await Promise.all([
-      supabase.from("products").select("*, brand:brands(*), category:categories(*), variants:product_variants(*)").order("created_at", { ascending: false }),
-      supabase.from("categories").select("*").order("name"),
-      supabase.from("brands").select("*").order("name"),
-    ]);
-    setProducts((prods as Product[]) ?? []);
-    setCategories((cats as Category[]) ?? []);
-    setBrands((brs as Brand[]) ?? []);
-    setLoading(false);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const [{ data: prods, error: e1 }, { data: cats, error: e2 }, { data: brs, error: e3 }] = await Promise.all([
+        supabase.from("products").select("*, brand:brands(*), category:categories(*), variants:product_variants(*)").order("created_at", { ascending: false }),
+        supabase.from("categories").select("*").order("name"),
+        supabase.from("brands").select("*").order("name"),
+      ]);
+      if (e1) throw new Error(e1.message);
+      setProducts((prods as Product[]) ?? []);
+      setCategories((cats as Category[]) ?? []);
+      setBrands((brs as Brand[]) ?? []);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load products");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -66,10 +74,15 @@ export function AdminProducts({ dark }: Props) {
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this product?")) return;
-    const supabase = createClient();
-    await supabase.from("product_variants").delete().eq("product_id", id);
-    await supabase.from("products").delete().eq("id", id);
-    fetchAll();
+    try {
+      const supabase = createClient();
+      await supabase.from("product_variants").delete().eq("product_id", id);
+      const { error: err } = await supabase.from("products").delete().eq("id", id);
+      if (err) throw new Error(err.message);
+      fetchAll();
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete product");
+    }
   };
 
   const totalStock = (p: Product) => p.variants?.reduce((s, v) => s + v.stock, 0) ?? 0;
@@ -101,6 +114,13 @@ export function AdminProducts({ dark }: Props) {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-[14px] border border-red-300 bg-red-50 p-4 text-sm text-red-600">
+          {error}
+          <button onClick={fetchAll} className="ml-3 underline">Retry</button>
+        </div>
+      )}
 
       <div className={cn("rounded-[16px] border overflow-hidden", p, brd)}>
         {loading ? (

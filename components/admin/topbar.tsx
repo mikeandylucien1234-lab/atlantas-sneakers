@@ -12,9 +12,6 @@ import {
   User,
   Settings,
   LogOut,
-  ShoppingCart,
-  UserPlus,
-  AlertTriangle,
 } from "lucide-react";
 
 type AdminTopbarProps = {
@@ -24,32 +21,6 @@ type AdminTopbarProps = {
   breadcrumb: string;
 };
 
-const sampleNotifications = [
-  {
-    id: 1,
-    icon: ShoppingCart,
-    text: "New order #1042 received",
-    time: "2 min ago",
-  },
-  {
-    id: 2,
-    icon: UserPlus,
-    text: "New customer registered",
-    time: "15 min ago",
-  },
-  {
-    id: 3,
-    icon: AlertTriangle,
-    text: "Low stock alert: Air Max 90",
-    time: "1 hour ago",
-  },
-  {
-    id: 4,
-    icon: ShoppingCart,
-    text: "Order #1041 shipped",
-    time: "3 hours ago",
-  },
-];
 
 export function AdminTopbar({
   dark,
@@ -155,7 +126,6 @@ export function AdminTopbar({
             )}
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
           </button>
           {notifOpen && (
             <div
@@ -174,43 +144,14 @@ export function AdminTopbar({
               >
                 Notifications
               </div>
-              {sampleNotifications.map((n) => {
-                const Icon = n.icon;
-                return (
-                  <div
-                    key={n.id}
-                    className={cn(
-                      "flex items-start gap-3 px-4 py-3 transition-colors",
-                      dark ? "hover:bg-white/5" : "hover:bg-black/5"
-                    )}
-                  >
-                    <Icon
-                      className={cn(
-                        "w-4 h-4 mt-0.5 shrink-0",
-                        dark ? "text-[#8b95a3]" : "text-[#8a929c]"
-                      )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={cn(
-                          "text-sm",
-                          dark ? "text-[#e7ebf0]" : "text-[#16181d]"
-                        )}
-                      >
-                        {n.text}
-                      </p>
-                      <p
-                        className={cn(
-                          "text-xs mt-0.5",
-                          dark ? "text-[#8b95a3]" : "text-[#8a929c]"
-                        )}
-                      >
-                        {n.time}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+              <div
+                className={cn(
+                  "px-4 py-6 text-center text-sm",
+                  dark ? "text-[#8b95a3]" : "text-[#8a929c]"
+                )}
+              >
+                No notifications
+              </div>
             </div>
           )}
         </div>
@@ -264,8 +205,8 @@ export function AdminTopbar({
                 </p>
               </div>
               {[
-                { icon: User, label: "View Profile", action: () => {} },
-                { icon: Settings, label: "Settings", action: () => {} },
+                { icon: User, label: "View Profile", action: () => { setProfileOpen(false); } },
+                { icon: Settings, label: "Settings", action: () => { setProfileOpen(false); } },
               ].map((item) => {
                 const Icon = item.icon;
                 return (

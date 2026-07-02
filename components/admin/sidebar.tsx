@@ -70,7 +70,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Catalog",
     items: [
-      { id: "orders", label: "Orders", icon: ShoppingCart, badge: 12 },
+      { id: "orders", label: "Orders", icon: ShoppingCart },
       { id: "products", label: "Products", icon: Package },
       { id: "categories", label: "Categories", icon: Grid3x3 },
       { id: "brands", label: "Brands", icon: Award },
@@ -83,7 +83,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "customers", label: "Customers", icon: Users },
       { id: "reviews", label: "Reviews", icon: Star },
-      { id: "tickets", label: "Tickets", icon: MessageSquare, badge: 5 },
+      { id: "tickets", label: "Tickets", icon: MessageSquare },
       { id: "rewards", label: "Rewards", icon: Gift },
       { id: "coupons", label: "Coupons", icon: Ticket },
     ],

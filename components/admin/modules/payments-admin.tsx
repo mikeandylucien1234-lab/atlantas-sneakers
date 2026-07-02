@@ -52,12 +52,14 @@ export function AdminPayments({ dark }: { dark: boolean }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Payment | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const perPage = 20;
-
-  const supabase = createClient();
 
   const fetchPayments = async () => {
     setLoading(true);
+    setError(null);
+    try {
+    const supabase = createClient();
     let query = supabase
       .from("payments")
       .select("*")
@@ -68,9 +70,14 @@ export function AdminPayments({ dark }: { dark: boolean }) {
     if (statusFilter !== "all") query = query.eq("status", statusFilter);
     if (search) query = query.or(`order_id.ilike.%${search}%,transaction_id.ilike.%${search}%`);
 
-    const { data } = await query;
+    const { data, error: err } = await query;
+    if (err) throw new Error(err.message);
     setPayments((data as unknown as Payment[]) ?? []);
-    setLoading(false);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load payments");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchPayments(); }, [page, gatewayFilter, statusFilter]);
@@ -104,6 +111,13 @@ export function AdminPayments({ dark }: { dark: boolean }) {
           </div>
         ))}
       </div>
+
+      {error && (
+        <div className="rounded-[14px] border border-red-300 bg-red-50 p-4 text-sm text-red-600">
+          {error}
+          <button onClick={fetchPayments} className="ml-3 underline">Retry</button>
+        </div>
+      )}
 
       <div className={cn("rounded-[16px] border", card)}>
         <div className="p-4 flex flex-col md:flex-row gap-3 items-start md:items-center justify-between border-b border-inherit">

@@ -23,6 +23,7 @@ export function AdminGenericTable({ dark, moduleId, tableName, columns }: Props)
   const [editValues, setEditValues] = useState<Record<string, unknown>>({});
   const [showAdd, setShowAdd] = useState(false);
   const [addValues, setAddValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
 
   const p = dark ? "bg-[#171c24]" : "bg-white";
   const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
@@ -33,24 +34,31 @@ export function AdminGenericTable({ dark, moduleId, tableName, columns }: Props)
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
+    setError(null);
+    try {
+      const supabase = createClient();
 
-    let query = supabase.from(tableName).select(
-      tableName === "flash_deals" ? "*, product:products(name)" :
-      tableName === "reviews" ? "*, profile:profiles(full_name), product:products(name)" :
-      tableName === "product_variants" ? "*, product:products(name)" : "*"
-    );
+      let query = supabase.from(tableName).select(
+        tableName === "flash_deals" ? "*, product:products(name)" :
+        tableName === "reviews" ? "*, profile:profiles(full_name), product:products(name)" :
+        tableName === "product_variants" ? "*, product:products(name)" : "*"
+      );
 
-    if (tableName === "profiles" && moduleId === "customers") {
-      query = query.eq("role", "customer");
+      if (tableName === "profiles" && moduleId === "customers") {
+        query = query.eq("role", "customer");
+      }
+      if (tableName === "profiles" && moduleId === "staff") {
+        query = query.eq("role", "admin");
+      }
+
+      const { data, error: err } = await query.order("created_at", { ascending: false }).limit(200);
+      if (err) throw new Error(err.message);
+      setRows((data as unknown as Record<string, unknown>[]) ?? []);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load data");
+    } finally {
+      setLoading(false);
     }
-    if (tableName === "profiles" && moduleId === "staff") {
-      query = query.eq("role", "admin");
-    }
-
-    const { data } = await query.order("created_at", { ascending: false }).limit(200);
-    setRows((data as unknown as Record<string, unknown>[]) ?? []);
-    setLoading(false);
   }, [tableName, moduleId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -80,33 +88,48 @@ export function AdminGenericTable({ dark, moduleId, tableName, columns }: Props)
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const handleInlineSave = async (id: string) => {
-    const supabase = createClient();
-    await supabase.from(tableName).update(editValues).eq("id", id);
-    setEditingId(null);
-    fetchData();
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.from(tableName).update(editValues).eq("id", id);
+      if (err) throw new Error(err.message);
+      setEditingId(null);
+      fetchData();
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save");
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this record?")) return;
-    const supabase = createClient();
-    await supabase.from(tableName).delete().eq("id", id);
-    fetchData();
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.from(tableName).delete().eq("id", id);
+      if (err) throw new Error(err.message);
+      fetchData();
+    } catch (e: any) {
+      setError(e.message ?? "Failed to delete");
+    }
   };
 
   const handleAdd = async () => {
-    const supabase = createClient();
-    const payload: Record<string, unknown> = {};
-    columns.forEach((c) => {
-      const v = addValues[c];
-      if (!v) return;
-      if (v === "true" || v === "false") payload[c] = v === "true";
-      else if (!isNaN(Number(v)) && v !== "") payload[c] = Number(v);
-      else payload[c] = v;
-    });
-    await supabase.from(tableName).insert(payload);
-    setShowAdd(false);
-    setAddValues({});
-    fetchData();
+    try {
+      const supabase = createClient();
+      const payload: Record<string, unknown> = {};
+      columns.forEach((c) => {
+        const v = addValues[c];
+        if (!v) return;
+        if (v === "true" || v === "false") payload[c] = v === "true";
+        else if (!isNaN(Number(v)) && v !== "") payload[c] = Number(v);
+        else payload[c] = v;
+      });
+      const { error: err } = await supabase.from(tableName).insert(payload);
+      if (err) throw new Error(err.message);
+      setShowAdd(false);
+      setAddValues({});
+      fetchData();
+    } catch (e: any) {
+      setError(e.message ?? "Failed to add record");
+    }
   };
 
   const readOnlyModules = new Set(["loginhistory", "audit", "activity", "rewards"]);
@@ -151,6 +174,13 @@ export function AdminGenericTable({ dark, moduleId, tableName, columns }: Props)
             <button onClick={handleAdd} className="h-[38px] px-4 rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8]">Save</button>
             <button onClick={() => setShowAdd(false)} className={cn("h-[38px] px-4 rounded-[11px] border text-sm font-semibold", brd, txt)}>Cancel</button>
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-[14px] border border-red-300 bg-red-50 p-4 text-sm text-red-600">
+          {error}
+          <button onClick={fetchData} className="ml-3 underline">Retry</button>
         </div>
       )}
 

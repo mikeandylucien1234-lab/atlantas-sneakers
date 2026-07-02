@@ -1,7 +1,19 @@
 import { NextRequest } from "next/server";
-import { stripe } from "@/lib/stripe";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+function computeShippingCost(subtotal: number, shippingMethod: string): number {
+  if (shippingMethod === "express") return 19.99;
+  if (shippingMethod === "overnight") return 39.99;
+  // standard: free above $100
+  return subtotal >= 100 ? 0 : 9.99;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,17 +37,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { items, shippingMethod, couponCode } = body as {
+    const { items, shippingAddress, shippingMethod, couponCode, paymentMethod } = body as {
       items: Array<{ productId: string; variantId: string | null; name: string; price: number; quantity: number }>;
-      shippingMethod?: string;
+      shippingAddress: { email: string; phone: string; firstName: string; lastName: string; address: string; city: string; country: string; postalCode: string };
+      shippingMethod: string;
       couponCode?: string;
+      paymentMethod: string;
     };
 
     if (!items?.length) {
       return Response.json({ error: "No items provided" }, { status: 400 });
     }
 
-    // Look up actual prices from the database
+    // Validate prices against DB
     const productIds = [...new Set(items.map((i) => i.productId))];
     const { data: products, error: productsError } = await supabase
       .from("products")
@@ -48,7 +62,6 @@ export async function POST(request: NextRequest) {
 
     const productPriceMap = new Map(products.map((p) => [p.id, Number(p.price)]));
 
-    // Look up variant prices if any items have variants
     const variantIds = items.filter((i) => i.variantId).map((i) => i.variantId!);
     const variantPriceMap = new Map<string, number>();
 
@@ -67,7 +80,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate real subtotal from DB prices
     let subtotal = 0;
     for (const item of items) {
       const dbPrice = item.variantId
@@ -78,7 +90,6 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: `Product not found: ${item.productId}` }, { status: 400 });
       }
 
-      // Reject if client-supplied price doesn't match DB price
       if (Math.abs(dbPrice - item.price) > 0.01) {
         return Response.json({ error: "Price mismatch detected" }, { status: 400 });
       }
@@ -86,15 +97,10 @@ export async function POST(request: NextRequest) {
       subtotal += dbPrice * item.quantity;
     }
 
-    // Calculate shipping server-side: free over $100 for standard, otherwise $9.99
-    let shippingCost: number;
-    if (shippingMethod === "express") shippingCost = 19.99;
-    else if (shippingMethod === "overnight") shippingCost = 39.99;
-    else shippingCost = subtotal >= 100 ? 0 : 9.99;
+    // Compute shipping server-side
+    const shippingCost = computeShippingCost(subtotal, shippingMethod ?? "standard");
 
     let discount = 0;
-    let couponData = null;
-
     if (couponCode) {
       const { data } = await supabase
         .from("coupons")
@@ -107,7 +113,6 @@ export async function POST(request: NextRequest) {
         const expired = data.expires_at && new Date(data.expires_at) < new Date();
         const meetsMin = subtotal >= Number(data.min_order);
         if (!expired && meetsMin) {
-          couponData = data;
           discount = data.type === "percentage"
             ? subtotal * (Number(data.value) / 100)
             : Number(data.value);
@@ -116,34 +121,59 @@ export async function POST(request: NextRequest) {
     }
 
     const total = Math.max(0, subtotal + shippingCost - discount);
-    const amountInCents = Math.round(total * 100);
 
-    if (amountInCents < 50) {
-      return Response.json({ error: "Order total too low" }, { status: 400 });
+    const orderNumber = `AS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    const { data: order, error: orderError } = await supabaseAdmin
+      .from("orders")
+      .insert({
+        order_number: orderNumber,
+        user_id: user.id,
+        status: "pending",
+        payment_status: "pending",
+        subtotal,
+        shipping_cost: shippingCost,
+        discount,
+        total,
+        payment_method: paymentMethod,
+        shipping_address: shippingAddress,
+      })
+      .select("id, order_number")
+      .single();
+
+    if (orderError) {
+      console.error("Order creation error:", orderError);
+      return Response.json({ error: "Failed to create order" }, { status: 500 });
     }
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
-      currency: "usd",
-      metadata: {
-        userId: user.id,
-        itemCount: String(items.length),
-        couponCode: couponCode ?? "",
-        shippingCost: String(shippingCost),
-        discount: String(discount),
-        subtotal: String(subtotal),
-        items: JSON.stringify(items.map((i) => ({ pid: i.productId, vid: i.variantId, qty: i.quantity, price: i.price }))),
-      },
-    });
+    // Create order items
+    if (items.length > 0) {
+      const { error: itemsError } = await supabaseAdmin
+        .from("order_items")
+        .insert(
+          items.map((item) => ({
+            order_id: order.id,
+            product_id: item.productId,
+            variant_id: item.variantId,
+            quantity: item.quantity,
+            price: item.price,
+          }))
+        );
+
+      if (itemsError) {
+        console.error("Order items creation error:", itemsError);
+      }
+    }
 
     return Response.json({
-      clientSecret: paymentIntent.client_secret,
-      paymentIntentId: paymentIntent.id,
+      orderId: order.id,
+      orderNumber: order.order_number,
       total,
+      shippingCost,
       discount,
     });
   } catch (err) {
-    console.error("create-intent error:", err);
-    return Response.json({ error: "Failed to create payment intent" }, { status: 500 });
+    console.error("Order creation error:", err);
+    return Response.json({ error: "Failed to create order" }, { status: 500 });
   }
 }

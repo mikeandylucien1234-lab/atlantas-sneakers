@@ -103,10 +103,10 @@ function StripePaymentForm({ onSuccess, onBack, totalAmount }: { onSuccess: (ord
     setError(null);
     const { error: submitError } = await elements.submit();
     if (submitError) { setError(submitError.message ?? "Payment failed"); setProcessing(false); return; }
-    const { error: confirmError } = await stripeHook.confirmPayment({ elements, confirmParams: { return_url: `${window.location.origin}/payment/success?gateway=stripe` }, redirect: "if_required" });
+    const { error: confirmError, paymentIntent: confirmedIntent } = await stripeHook.confirmPayment({ elements, confirmParams: { return_url: `${window.location.origin}/payment/success?gateway=stripe` }, redirect: "if_required" });
     if (confirmError) { setError(confirmError.message ?? "Payment failed. Please try again."); setProcessing(false); return; }
-    const orderNum = `AS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    onSuccess(orderNum);
+    // The webhook creates the order for Stripe payments; show a generic confirmation
+    onSuccess(confirmedIntent?.id ?? "stripe-pending");
   };
 
   return (
@@ -197,6 +197,8 @@ export default function CheckoutPage() {
   const shippingCost = selectedShipping.freeAbove && subtotal >= selectedShipping.freeAbove ? 0 : selectedShipping.price;
   const grandTotal = Math.max(0, subtotal + shippingCost - discount);
 
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [createdOrderNumber, setCreatedOrderNumber] = useState<string | null>(null);
   const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
 
   const validateAddress = (): boolean => {
@@ -222,7 +224,7 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, name: i.name, price: i.price, quantity: i.quantity })),
-          shippingCost,
+          shippingMethod,
           couponCode: coupon?.code,
           userId: user?.id,
         }),
@@ -233,6 +235,36 @@ export default function CheckoutPage() {
     }
   }, [step, clientSecret, items, shippingCost, coupon, user, paymentMethod]);
 
+  const createOrder = async (): Promise<{ orderId: string; orderNumber: string } | null> => {
+    if (createdOrderId && createdOrderNumber) {
+      return { orderId: createdOrderId, orderNumber: createdOrderNumber };
+    }
+    try {
+      const res = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, name: i.name, price: i.price, quantity: i.quantity })),
+          shippingAddress: { email, phone, firstName, lastName, address, city, country, postalCode },
+          shippingMethod,
+          couponCode: coupon?.code,
+          paymentMethod,
+        }),
+      });
+      const data = await res.json();
+      if (data.orderId) {
+        setCreatedOrderId(data.orderId);
+        setCreatedOrderNumber(data.orderNumber);
+        return { orderId: data.orderId, orderNumber: data.orderNumber };
+      }
+      setIntentError(data.error ?? "Failed to create order");
+      return null;
+    } catch {
+      setIntentError("Network error creating order");
+      return null;
+    }
+  };
+
   const handlePaymentSuccess = (orderNum: string) => {
     setOrderNumber(orderNum);
     clearCart();
@@ -241,17 +273,20 @@ export default function CheckoutPage() {
 
   const handleMobilePayment = async (gateway: "moncash" | "natcash") => {
     setProcessing(true);
+    setIntentError(null);
+    const order = await createOrder();
+    if (!order) { setProcessing(false); return; }
     try {
       const res = await fetch(`/api/payments/${gateway}/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: `temp-${Date.now()}`, userId: user?.id ?? null, amount: grandTotal, phone: mobilePhone }),
+        body: JSON.stringify({ orderId: order.orderId, userId: user?.id ?? null, amount: grandTotal, phone: mobilePhone }),
       });
       const data = await res.json();
       if (data.redirectUrl) {
         window.location.href = data.redirectUrl;
       } else if (data.paymentId) {
-        router.push(`/payment/processing?gateway=${gateway}&paymentId=${data.paymentId}&order=${data.paymentId}`);
+        router.push(`/payment/processing?gateway=${gateway}&paymentId=${data.paymentId}&order=${order.orderNumber}`);
       } else {
         setIntentError(data.error ?? "Payment initiation failed");
       }
@@ -261,23 +296,38 @@ export default function CheckoutPage() {
 
   const handleCodOrBank = async () => {
     setProcessing(true);
+    setIntentError(null);
+    const order = await createOrder();
+    if (!order) { setProcessing(false); return; }
     const endpoint = paymentMethod === "cod" ? "/api/payments/cod/confirm" : "/api/payments/bank/confirm";
     try {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: `temp-${Date.now()}`, userId: user?.id ?? null, amount: grandTotal, referenceNumber: bankRef }),
+        body: JSON.stringify({ orderId: order.orderId, userId: user?.id ?? null, amount: grandTotal, referenceNumber: bankRef }),
       });
       const data = await res.json();
       if (data.paymentId) {
-        const orderNum = `AS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        handlePaymentSuccess(orderNum);
+        handlePaymentSuccess(order.orderNumber);
       } else {
         setIntentError(data.error ?? "Failed");
       }
     } catch { setIntentError("Network error"); }
     setProcessing(false);
   };
+
+  // Empty cart guard
+  if (items.length === 0 && step !== 5) {
+    return (
+      <div className="mt-4 mb-10 text-center">
+        <h1 className="text-[27px] font-extrabold text-[#16181d] tracking-[-.02em]">Your Cart is Empty</h1>
+        <p className="text-[14px] text-[#5b6472] mt-2">Add some items before checking out.</p>
+        <Link href="/shop">
+          <Button size="lg" className="mt-6">Browse Shop</Button>
+        </Link>
+      </div>
+    );
+  }
 
   // Step 5 = confirmation
   if (step === 5) {

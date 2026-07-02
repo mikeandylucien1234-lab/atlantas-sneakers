@@ -28,6 +28,18 @@ export async function POST(request: NextRequest) {
     const { userId, items: itemsJson, shippingCost, discount, subtotal } = paymentIntent.metadata;
 
     try {
+      // Idempotency: check if an order already exists for this payment intent
+      const { data: existingOrder } = await supabaseAdmin
+        .from("orders")
+        .select("id")
+        .eq("stripe_payment_intent_id", paymentIntent.id)
+        .maybeSingle();
+
+      if (existingOrder) {
+        console.log(`Order already exists for payment intent ${paymentIntent.id}, skipping`);
+        return Response.json({ received: true });
+      }
+
       const items = JSON.parse(itemsJson || "[]") as Array<{
         pid: string; vid: string | null; qty: number; price: number;
       }>;
@@ -45,6 +57,7 @@ export async function POST(request: NextRequest) {
           shipping_cost: Number(shippingCost),
           discount: Number(discount),
           total: paymentIntent.amount / 100,
+          stripe_payment_intent_id: paymentIntent.id,
         })
         .select()
         .single();

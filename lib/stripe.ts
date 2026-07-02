@@ -1,7 +1,8 @@
 import Stripe from "stripe";
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-05-27.dahlia",
+  // @ts-expect-error -- Update stripe package to match this API version
+  apiVersion: "2026-06-24.dahlia",
 });
 
 export const stripePublishableKey =

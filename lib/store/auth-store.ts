@@ -27,20 +27,24 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   signOut: async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
-    set({ user: null, profile: null, isAuthenticated: false });
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      set({ user: null, profile: null, isAuthenticated: false });
+    }
   },
 
   updateProfile: async (updates) => {
     const { user } = get();
     if (!user) return;
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .update(updates)
       .eq("id", user.id)
       .select()
       .single();
+    if (error) throw new Error(`Failed to update profile: ${error.message}`);
     if (data) set({ profile: data as Profile });
   },
 }));

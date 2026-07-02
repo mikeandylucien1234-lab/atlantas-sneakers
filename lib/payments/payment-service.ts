@@ -59,10 +59,11 @@ export async function updatePaymentStatus(
   status: PaymentStatus,
   extra: Record<string, unknown> = {}
 ): Promise<void> {
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from("payments")
     .update({ status, updated_at: new Date().toISOString(), ...extra })
     .eq("id", paymentId);
+  if (error) throw new Error(`Failed to update payment status: ${error.message}`);
 }
 
 export async function logPaymentEvent(data: {
@@ -119,16 +120,16 @@ export async function processRefund(
 
   if (error) return { success: false, error: error.message };
 
-  await updatePaymentStatus(paymentId, "refunded");
-  await supabaseAdmin
-    .from("refunds")
-    .update({ status: "completed", processed_at: new Date().toISOString() })
-    .eq("id", refund!.id);
+  // TODO: Integrate with payment gateway (Stripe, MonCash, NatCash) to actually
+  // process the refund. Do not mark as "completed" or update payment to "refunded"
+  // until the gateway confirms the refund has been processed.
 
-  await supabaseAdmin
-    .from("orders")
-    .update({ status: "cancelled", payment_status: "refunded" })
-    .eq("id", payment.order_id);
+  await logPaymentEvent({
+    paymentId,
+    gateway: payment.gateway,
+    eventType: "refund.initiated",
+    request: { refundId: refund!.id, amount, reason, type },
+  });
 
   return { success: true };
 }

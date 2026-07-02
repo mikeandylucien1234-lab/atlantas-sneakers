@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { logPaymentEvent } from "@/lib/payments/payment-service";
 
 const MONCASH_BASE = process.env.MONCASH_MODE === "production"
@@ -22,6 +23,12 @@ async function getMoncashToken(): Promise<string> {
 }
 
 export async function GET(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const transactionId = request.nextUrl.searchParams.get("transactionId");
   if (!transactionId) {
     return Response.json({ error: "Missing transactionId" }, { status: 400 });

@@ -11,7 +11,7 @@ export async function createOrder(orderData: {
   total: number;
 }) {
   const supabase = createClient();
-  const orderNumber = `ATL-${Date.now().toString(36).toUpperCase()}`;
+  const orderNumber = `ATL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
   const { data: order, error: orderError } = await supabase
     .from("orders")

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { logPaymentEvent } from "@/lib/payments/payment-service";
 
 const NATCASH_BASE = process.env.NATCASH_MODE === "production"
@@ -6,6 +7,12 @@ const NATCASH_BASE = process.env.NATCASH_MODE === "production"
   : "https://sandbox.natcash.ht";
 
 export async function GET(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const reference = request.nextUrl.searchParams.get("reference");
   if (!reference) {
     return Response.json({ error: "Missing reference" }, { status: 400 });

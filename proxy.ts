@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const protectedPaths = ["/account", "/checkout"];
+const protectedPaths = ["/account", "/checkout", "/admin"];
 const authPaths = ["/auth/login", "/auth/register", "/auth/forgot-password"];
 
 export async function proxy(request: NextRequest) {
@@ -43,6 +43,18 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  if (pathname.startsWith("/admin") && user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile || profile.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+  }
+
   if (isAuthPage && user) {
     return NextResponse.redirect(new URL("/", request.url));
   }
@@ -51,5 +63,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/account/:path*", "/checkout/:path*", "/auth/:path*"],
+  matcher: ["/account/:path*", "/checkout/:path*", "/admin/:path*", "/auth/:path*"],
 };

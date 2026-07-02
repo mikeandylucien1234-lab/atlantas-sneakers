@@ -68,18 +68,17 @@ async function reduceInventory(orderId: string): Promise<void> {
 
   for (const item of items) {
     if (!item.variant_id) continue;
-    const { data: variant } = await supabaseAdmin
-      .from("product_variants")
-      .select("stock")
-      .eq("id", item.variant_id)
-      .single();
 
-    if (variant) {
-      const newStock = Math.max(0, variant.stock - item.quantity);
-      await supabaseAdmin
-        .from("product_variants")
-        .update({ stock: newStock })
-        .eq("id", item.variant_id);
-    }
+    // Atomic decrement via Supabase RPC to avoid read-then-write race conditions.
+    // The RPC function runs: UPDATE product_variants SET stock = GREATEST(0, stock - qty) WHERE id = vid;
+    // Deploy it with:
+    //   CREATE OR REPLACE FUNCTION decrement_variant_stock(p_variant_id UUID, p_quantity INT)
+    //   RETURNS VOID LANGUAGE sql AS $$
+    //     UPDATE product_variants SET stock = GREATEST(0, stock - p_quantity) WHERE id = p_variant_id;
+    //   $$;
+    await supabaseAdmin.rpc("decrement_variant_stock", {
+      p_variant_id: item.variant_id,
+      p_quantity: item.quantity,
+    });
   }
 }

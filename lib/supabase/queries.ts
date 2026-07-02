@@ -1,8 +1,6 @@
 import { createClient } from "./client";
 import type { Product, Category, Brand, FlashDeal } from "@/types";
 
-const supabase = createClient();
-
 const PRODUCT_SELECT = "*, brand:brands(*), category:categories(*), variants:product_variants(*)";
 
 export type ProductFilters = {
@@ -19,6 +17,7 @@ export type ProductFilters = {
 };
 
 export async function getProducts(filters?: ProductFilters) {
+  const supabase = createClient();
   let query = supabase
     .from("products")
     .select(PRODUCT_SELECT)
@@ -56,6 +55,7 @@ export async function getProducts(filters?: ProductFilters) {
 }
 
 export async function getProductBySlug(slug: string) {
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("products")
     .select(`${PRODUCT_SELECT}, reviews(*, profile:profiles(full_name, avatar_url))`)
@@ -67,6 +67,7 @@ export async function getProductBySlug(slug: string) {
 }
 
 export async function getCategories() {
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("categories")
     .select("*")
@@ -77,6 +78,7 @@ export async function getCategories() {
 }
 
 export async function getBrands() {
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("brands")
     .select("*")
@@ -95,6 +97,7 @@ export async function getNewArrivals() {
 }
 
 export async function getBestSellers() {
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("products")
     .select(PRODUCT_SELECT)
@@ -107,6 +110,7 @@ export async function getBestSellers() {
 }
 
 export async function getFlashDeals() {
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("flash_deals")
     .select("*, product:products(*, brand:brands(*), category:categories(*))")
@@ -122,6 +126,7 @@ export async function searchProducts(query: string) {
 }
 
 export async function getProductsByCategory(slug: string) {
+  const supabase = createClient();
   const { data: category } = await supabase
     .from("categories")
     .select("id")
@@ -140,6 +145,7 @@ export async function getProductsByCategory(slug: string) {
 }
 
 export async function getRelatedProducts(productId: string, categoryId: string | null) {
+  const supabase = createClient();
   let query = supabase
     .from("products")
     .select(PRODUCT_SELECT)
@@ -155,6 +161,7 @@ export async function getRelatedProducts(productId: string, categoryId: string |
 }
 
 export async function validateCoupon(code: string, total: number) {
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("coupons")
     .select("*")

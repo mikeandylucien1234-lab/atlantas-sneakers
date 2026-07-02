@@ -197,7 +197,22 @@ export default function CheckoutPage() {
   const shippingCost = selectedShipping.freeAbove && subtotal >= selectedShipping.freeAbove ? 0 : selectedShipping.price;
   const grandTotal = Math.max(0, subtotal + shippingCost - discount);
 
+  const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
+
+  const validateAddress = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!email.trim()) errors.email = "Email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errors.email = "Enter a valid email";
+    if (!firstName.trim()) errors.firstName = "First name is required";
+    if (!lastName.trim()) errors.lastName = "Last name is required";
+    if (!address.trim()) errors.address = "Address is required";
+    if (!city.trim()) errors.city = "City is required";
+    setAddressErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const inputCls = "w-full h-[46px] rounded-[12px] border-[1.5px] border-[#e4e7eb] bg-[#fbfbfc] px-4 text-[14px] font-medium text-[#16181d] placeholder:text-[#9aa3ad] outline-none transition-colors focus:border-[#2563eb]";
+  const inputErrorCls = "w-full h-[46px] rounded-[12px] border-[1.5px] border-[#ef4444] bg-[#fbfbfc] px-4 text-[14px] font-medium text-[#16181d] placeholder:text-[#9aa3ad] outline-none transition-colors focus:border-[#ef4444]";
 
   useEffect(() => {
     if (step === 4 && paymentMethod === "stripe" && !clientSecret && items.length > 0) {
@@ -304,28 +319,33 @@ export default function CheckoutPage() {
               <h2 className="text-[18px] font-extrabold text-[#16181d] mb-5">Shipping Address</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Email</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" className={inputCls} />
+                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Email <span className="text-[#ef4444]">*</span></label>
+                  <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setAddressErrors((prev) => { const { email: _, ...rest } = prev; return rest; }); }} placeholder="your@email.com" className={addressErrors.email ? inputErrorCls : inputCls} />
+                  {addressErrors.email && <p className="text-[12px] text-[#ef4444] mt-1">{addressErrors.email}</p>}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Phone</label>
                   <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+509 XXXX XXXX" className={inputCls} />
                 </div>
                 <div>
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">First Name</label>
-                  <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="John" className={inputCls} />
+                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">First Name <span className="text-[#ef4444]">*</span></label>
+                  <input type="text" value={firstName} onChange={(e) => { setFirstName(e.target.value); setAddressErrors((prev) => { const { firstName: _, ...rest } = prev; return rest; }); }} placeholder="John" className={addressErrors.firstName ? inputErrorCls : inputCls} />
+                  {addressErrors.firstName && <p className="text-[12px] text-[#ef4444] mt-1">{addressErrors.firstName}</p>}
                 </div>
                 <div>
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Last Name</label>
-                  <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Doe" className={inputCls} />
+                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Last Name <span className="text-[#ef4444]">*</span></label>
+                  <input type="text" value={lastName} onChange={(e) => { setLastName(e.target.value); setAddressErrors((prev) => { const { lastName: _, ...rest } = prev; return rest; }); }} placeholder="Doe" className={addressErrors.lastName ? inputErrorCls : inputCls} />
+                  {addressErrors.lastName && <p className="text-[12px] text-[#ef4444] mt-1">{addressErrors.lastName}</p>}
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Address</label>
-                  <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="123 Main Street" className={inputCls} />
+                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Address <span className="text-[#ef4444]">*</span></label>
+                  <input type="text" value={address} onChange={(e) => { setAddress(e.target.value); setAddressErrors((prev) => { const { address: _, ...rest } = prev; return rest; }); }} placeholder="123 Main Street" className={addressErrors.address ? inputErrorCls : inputCls} />
+                  {addressErrors.address && <p className="text-[12px] text-[#ef4444] mt-1">{addressErrors.address}</p>}
                 </div>
                 <div>
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">City</label>
-                  <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Port-au-Prince" className={inputCls} />
+                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">City <span className="text-[#ef4444]">*</span></label>
+                  <input type="text" value={city} onChange={(e) => { setCity(e.target.value); setAddressErrors((prev) => { const { city: _, ...rest } = prev; return rest; }); }} placeholder="Port-au-Prince" className={addressErrors.city ? inputErrorCls : inputCls} />
+                  {addressErrors.city && <p className="text-[12px] text-[#ef4444] mt-1">{addressErrors.city}</p>}
                 </div>
                 <div>
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Postal Code</label>
@@ -336,7 +356,7 @@ export default function CheckoutPage() {
                   <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} className={inputCls} />
                 </div>
               </div>
-              <Button size="lg" className="w-full mt-6" onClick={() => setStep(1)}>
+              <Button size="lg" className="w-full mt-6" onClick={() => { if (validateAddress()) setStep(1); }}>
                 Continue to Shipping <ChevronRight className="w-4 h-4" />
               </Button>
             </>

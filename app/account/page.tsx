@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, Package, Heart, MapPin, CreditCard, Trophy, Settings, LogOut, ChevronRight, Edit3, Star, Loader2 } from "lucide-react";
+import { User, Package, Heart, MapPin, CreditCard, Trophy, Settings, LogOut, ChevronRight, Edit3, Star, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { useWishlistStore } from "@/lib/store/wishlist-store";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 const sidebarItems = [
   { id: "profile", label: "Profile", icon: User },
@@ -27,9 +30,10 @@ interface Order {
   items: Array<{ id: string; quantity: number; price: number; product: { name: string; slug: string; images: string[] } | null }>;
 }
 
+// TODO: Replace with real address data from user profile / Supabase
 const mockAddresses = [
-  { id: "1", label: "Home", name: "John Doe", line1: "123 Peachtree St NE", city: "Atlanta", state: "GA", zip: "30301", country: "US", isDefault: true },
-  { id: "2", label: "Office", name: "John Doe", line1: "456 Midtown Ave", city: "Atlanta", state: "GA", zip: "30308", country: "US", isDefault: false },
+  { id: "1", label: "Home", name: "Jane Doe", line1: "123 Peachtree St NE", city: "Atlanta", state: "GA", zip: "30301", country: "US", isDefault: true },
+  { id: "2", label: "Office", name: "Jane Doe", line1: "456 Midtown Ave", city: "Atlanta", state: "GA", zip: "30308", country: "US", isDefault: false },
 ];
 
 const statusColor: Record<string, string> = {
@@ -41,14 +45,34 @@ const statusColor: Record<string, string> = {
 
 type Section = typeof sidebarItems[number]["id"];
 
+function getTierInfo(points: number) {
+  if (points >= 5000) return { tier: "Platinum", next: null, nextThreshold: null };
+  if (points >= 2000) return { tier: "Gold", next: "Platinum", nextThreshold: 5000 };
+  if (points >= 500) return { tier: "Silver", next: "Gold", nextThreshold: 2000 };
+  return { tier: "Bronze", next: "Silver", nextThreshold: 500 };
+}
+
 export default function AccountPage() {
+  const router = useRouter();
   const [activeSection, setActiveSection] = useState<Section>("profile");
   const signOut = useAuthStore((s) => s.signOut);
   const user = useAuthStore((s) => s.user);
+  const profile = useAuthStore((s) => s.profile);
+  const updateProfile = useAuthStore((s) => s.updateProfile);
+  const wishlistItems = useWishlistStore((s) => s.items);
+  const removeFromWishlist = useWishlistStore((s) => s.removeItem);
 
-  const [fullName, setFullName] = useState("John Doe");
-  const [email] = useState("john@example.com");
-  const [phone, setPhone] = useState("+1 (555) 123-4567");
+  const displayName = profile?.full_name || user?.user_metadata?.full_name || "";
+  const displayEmail = user?.email || "";
+  const nameInitial = displayName ? displayName.charAt(0).toUpperCase() : displayEmail ? displayEmail.charAt(0).toUpperCase() : "?";
+
+  const [fullName, setFullName] = useState(displayName);
+  const [phone, setPhone] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setFullName(profile?.full_name || user?.user_metadata?.full_name || "");
+  }, [profile, user]);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -64,6 +88,31 @@ export default function AccountPage() {
     }
   }, [activeSection, user]);
 
+  const memberSince = profile?.created_at
+    ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : "";
+
+  const points = profile?.points ?? 0;
+  const tierInfo = getTierInfo(points);
+  const rewardsValue = (points * 0.01).toFixed(2);
+  const progressPercent = tierInfo.nextThreshold
+    ? Math.min(100, Math.round((points / tierInfo.nextThreshold) * 100))
+    : 100;
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      await updateProfile({ full_name: fullName });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/");
+  };
+
   const inputCls = "w-full h-[46px] rounded-[12px] border-[1.5px] border-[#e4e7eb] bg-[#fbfbfc] px-4 text-[14px] font-medium text-[#16181d] placeholder:text-[#9aa3ad] outline-none focus:border-[#2563eb]";
 
   return (
@@ -75,11 +124,11 @@ export default function AccountPage() {
         <aside className="bg-white border border-[#eef0f3] rounded-[16px] p-4 self-start lg:sticky lg:top-[140px]">
           <div className="flex items-center gap-3 pb-4 border-b border-[#eef0f3] mb-2">
             <div className="w-[44px] h-[44px] rounded-full bg-[#2563eb] text-white flex items-center justify-center text-[18px] font-bold">
-              J
+              {nameInitial}
             </div>
             <div className="min-w-0">
-              <p className="text-[14px] font-bold text-[#16181d]">{fullName}</p>
-              <p className="text-[12px] text-[#9aa3ad] truncate">{email}</p>
+              <p className="text-[14px] font-bold text-[#16181d]">{displayName || "User"}</p>
+              <p className="text-[12px] text-[#9aa3ad] truncate">{displayEmail}</p>
             </div>
           </div>
           <nav className="space-y-0.5">
@@ -102,7 +151,7 @@ export default function AccountPage() {
             ))}
             <button
               type="button"
-              onClick={() => signOut()}
+              onClick={handleSignOut}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[13px] font-semibold text-[#ef4444] hover:bg-[#fef2f2] transition-colors cursor-pointer"
             >
               <LogOut className="w-[18px] h-[18px]" />
@@ -118,11 +167,11 @@ export default function AccountPage() {
               <h2 className="text-[18px] font-extrabold text-[#16181d] mb-5">Profile Information</h2>
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-[72px] h-[72px] rounded-full bg-[#2563eb] text-white flex items-center justify-center text-[28px] font-bold">
-                  J
+                  {nameInitial}
                 </div>
                 <div>
-                  <p className="text-[16px] font-bold text-[#16181d]">{fullName}</p>
-                  <p className="text-[13px] text-[#5b6472]">Member since May 2025</p>
+                  <p className="text-[16px] font-bold text-[#16181d]">{displayName || "User"}</p>
+                  {memberSince && <p className="text-[13px] text-[#5b6472]">Member since {memberSince}</p>}
                 </div>
                 <button type="button" className="ml-auto w-[36px] h-[36px] flex items-center justify-center rounded-[10px] border border-[#e4e7eb] text-[#5b6472] hover:text-[#2563eb] hover:border-[#2563eb] transition-colors cursor-pointer">
                   <Edit3 className="w-[16px] h-[16px]" />
@@ -135,14 +184,16 @@ export default function AccountPage() {
                 </div>
                 <div>
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Email</label>
-                  <input type="email" value={email} readOnly className={`${inputCls} opacity-60`} />
+                  <input type="email" value={displayEmail} readOnly className={`${inputCls} opacity-60`} />
                 </div>
                 <div>
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Phone</label>
-                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Enter your phone number" className={inputCls} />
                 </div>
               </div>
-              <Button size="md" className="mt-5">Save Changes</Button>
+              <Button size="md" className="mt-5" onClick={handleSaveProfile} disabled={saving}>
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Saving...</> : "Save Changes"}
+              </Button>
             </>
           )}
 
@@ -195,6 +246,40 @@ export default function AccountPage() {
             </>
           )}
 
+          {activeSection === "wishlist" && (
+            <>
+              <h2 className="text-[18px] font-extrabold text-[#16181d] mb-5">Wishlist</h2>
+              {wishlistItems.length === 0 ? (
+                <div className="text-center py-12">
+                  <Heart className="w-10 h-10 text-[#d1d5db] mx-auto mb-3" />
+                  <p className="text-[14px] text-[#5b6472]">Your wishlist is empty.</p>
+                  <Link href="/shop" className="text-[13px] font-bold text-[#2563eb] hover:underline mt-2 inline-block">Browse Products</Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {wishlistItems.map((item) => (
+                    <div key={item.productId} className="border border-[#eef0f3] rounded-[14px] p-4 flex gap-3">
+                      <div className="w-[64px] h-[64px] rounded-[10px] bg-[#f4f5f7] overflow-hidden relative shrink-0">
+                        <Image src={item.image} alt={item.name} fill className="object-cover" sizes="64px" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-semibold text-[#16181d] line-clamp-1">{item.name}</p>
+                        <p className="text-[14px] font-bold text-[#16181d] mt-1">${item.price.toFixed(2)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFromWishlist(item.productId)}
+                        className="self-start p-2 text-[#9aa3ad] hover:text-[#ef4444] transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           {activeSection === "addresses" && (
             <>
               <div className="flex items-center justify-between mb-5">
@@ -227,39 +312,37 @@ export default function AccountPage() {
               <div className="bg-[linear-gradient(135deg,#1d4ed8,#2563eb)] rounded-[16px] p-6 text-white mb-6">
                 <div className="flex items-center gap-2 mb-1">
                   <Star className="w-[20px] h-[20px] fill-[#fbbf24] text-[#fbbf24]" />
-                  <span className="text-[14px] font-bold text-white/80">Gold Member</span>
+                  <span className="text-[14px] font-bold text-white/80">{tierInfo.tier} Member</span>
                 </div>
-                <p className="text-[36px] font-extrabold leading-none mt-2">2,450</p>
+                <p className="text-[36px] font-extrabold leading-none mt-2">{points.toLocaleString()}</p>
                 <p className="text-[13px] text-white/70 mt-1">Points Available</p>
-                <div className="mt-4">
-                  <div className="flex justify-between text-[12px] text-white/70 mb-1.5">
-                    <span>Gold (2,000)</span>
-                    <span>Platinum (5,000)</span>
+                {tierInfo.nextThreshold && (
+                  <div className="mt-4">
+                    <div className="flex justify-between text-[12px] text-white/70 mb-1.5">
+                      <span>{tierInfo.tier} ({tierInfo.nextThreshold === 5000 ? "2,000" : tierInfo.nextThreshold === 2000 ? "500" : "0"})</span>
+                      <span>{tierInfo.next} ({tierInfo.nextThreshold.toLocaleString()})</span>
+                    </div>
+                    <div className="h-[8px] bg-white/20 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#fbbf24] rounded-full" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                    <p className="text-[12px] text-white/70 mt-1.5">{(tierInfo.nextThreshold - points).toLocaleString()} points to {tierInfo.next}</p>
                   </div>
-                  <div className="h-[8px] bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#fbbf24] rounded-full" style={{ width: "49%" }} />
-                  </div>
-                  <p className="text-[12px] text-white/70 mt-1.5">2,550 points to Platinum</p>
-                </div>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 border border-[#eef0f3] rounded-[14px]">
-                  <p className="text-[24px] font-extrabold text-[#16181d]">12</p>
-                  <p className="text-[12px] text-[#5b6472]">Total Orders</p>
+                  <p className="text-[24px] font-extrabold text-[#16181d]">{points.toLocaleString()}</p>
+                  <p className="text-[12px] text-[#5b6472]">Total Points</p>
                 </div>
                 <div className="text-center p-4 border border-[#eef0f3] rounded-[14px]">
-                  <p className="text-[24px] font-extrabold text-[#16181d]">$2,847</p>
-                  <p className="text-[12px] text-[#5b6472]">Total Spent</p>
-                </div>
-                <div className="text-center p-4 border border-[#eef0f3] rounded-[14px]">
-                  <p className="text-[24px] font-extrabold text-[#2563eb]">$24.50</p>
+                  <p className="text-[24px] font-extrabold text-[#2563eb]">${rewardsValue}</p>
                   <p className="text-[12px] text-[#5b6472]">Rewards Value</p>
                 </div>
               </div>
             </>
           )}
 
-          {(activeSection === "wishlist" || activeSection === "payment" || activeSection === "settings") && (
+          {(activeSection === "payment" || activeSection === "settings") && (
             <div className="text-center py-12">
               <p className="text-[14px] text-[#5b6472]">This section is coming soon.</p>
             </div>

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { SlidersHorizontal, Grid3X3, LayoutList, ChevronLeft, ChevronRight } from "lucide-react";
 import { ProductCard } from "@/components/ui/product-card";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
-import { FiltersSidebar } from "@/components/layout/filters-sidebar";
+import { FiltersSidebar, type ActiveFilters } from "@/components/layout/filters-sidebar";
 import { cn } from "@/lib/utils";
 import { getProducts, type ProductFilters } from "@/lib/supabase/queries";
 import type { Product } from "@/types";
@@ -29,6 +29,12 @@ export default function ShopPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilters, setActiveFilters] = useState<ActiveFilters | null>(null);
+
+  const handleFiltersChange = useCallback((filters: ActiveFilters) => {
+    setActiveFilters(filters);
+    setCurrentPage(1);
+  }, []);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -39,6 +45,11 @@ export default function ShopPage() {
         offset: (currentPage - 1) * PAGE_SIZE,
       };
       if (searchQuery) filters.search = searchQuery;
+      if (activeFilters) {
+        if (activeFilters.brands.length) filters.brandSlugs = activeFilters.brands.map((b) => b.toLowerCase().replace(/\s+/g, "-"));
+        if (activeFilters.priceRange[0] > 0) filters.minPrice = activeFilters.priceRange[0];
+        if (activeFilters.priceRange[1] < 500) filters.maxPrice = activeFilters.priceRange[1];
+      }
       const data = await getProducts(filters);
       setProducts(data);
     } catch {
@@ -46,7 +57,7 @@ export default function ShopPage() {
     } finally {
       setLoading(false);
     }
-  }, [sortBy, currentPage, searchQuery]);
+  }, [sortBy, currentPage, searchQuery, activeFilters]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -68,7 +79,7 @@ export default function ShopPage() {
       </p>
 
       <div className="flex gap-5 mt-5">
-        <FiltersSidebar mobileOpen={mobileFiltersOpen} onMobileClose={() => setMobileFiltersOpen(false)} />
+        <FiltersSidebar mobileOpen={mobileFiltersOpen} onMobileClose={() => setMobileFiltersOpen(false)} onFiltersChange={handleFiltersChange} />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between bg-white border border-[#eef0f3] rounded-[14px] px-4 py-3 mb-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Drawer } from "@/components/ui/drawer";
@@ -186,12 +186,21 @@ function FilterContent({
   );
 }
 
+export type ActiveFilters = {
+  brands: string[];
+  categories: string[];
+  sizes: string[];
+  colors: string[];
+  priceRange: [number, number];
+};
+
 type FiltersSidebarProps = {
   mobileOpen: boolean;
   onMobileClose: () => void;
+  onFiltersChange?: (filters: ActiveFilters) => void;
 };
 
-export function FiltersSidebar({ mobileOpen, onMobileClose }: FiltersSidebarProps) {
+export function FiltersSidebar({ mobileOpen, onMobileClose, onFiltersChange }: FiltersSidebarProps) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
@@ -207,6 +216,16 @@ export function FiltersSidebar({ mobileOpen, onMobileClose }: FiltersSidebarProp
     setSelectedColors([]);
     setPriceRange([0, 500]);
   };
+
+  useEffect(() => {
+    onFiltersChange?.({
+      brands: selectedBrands,
+      categories: selectedCategories,
+      sizes: selectedSizes,
+      colors: selectedColors,
+      priceRange,
+    });
+  }, [selectedBrands, selectedCategories, selectedSizes, selectedColors, priceRange, onFiltersChange]);
 
   const filterProps = {
     selectedCategories, setSelectedCategories,

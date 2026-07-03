@@ -47,6 +47,7 @@ export default function ShopPage() {
       if (searchQuery) filters.search = searchQuery;
       if (activeFilters) {
         if (activeFilters.brands.length) filters.brandSlugs = activeFilters.brands.map((b) => b.toLowerCase().replace(/\s+/g, "-"));
+        if (activeFilters.categories.length) filters.categorySlugs = activeFilters.categories.map((c) => c.toLowerCase().replace(/\s+/g, "-"));
         if (activeFilters.priceRange[0] > 0) filters.minPrice = activeFilters.priceRange[0];
         if (activeFilters.priceRange[1] < 500) filters.maxPrice = activeFilters.priceRange[1];
       }

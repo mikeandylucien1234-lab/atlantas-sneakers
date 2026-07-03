@@ -1,27 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Drawer } from "@/components/ui/drawer";
-
-const categories = [
-  { label: "Sneakers", count: 124 },
-  { label: "Running", count: 89 },
-  { label: "Basketball", count: 56 },
-  { label: "Lifestyle", count: 201 },
-  { label: "Skateboarding", count: 34 },
-  { label: "Training", count: 67 },
-];
-
-const brands = [
-  { label: "Nike", count: 156 },
-  { label: "Adidas", count: 134 },
-  { label: "Jordan", count: 89 },
-  { label: "New Balance", count: 67 },
-  { label: "Puma", count: 45 },
-  { label: "Converse", count: 38 },
-];
+import { getCategories, getBrands } from "@/lib/supabase/queries";
 
 const sizes = ["6", "6.5", "7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"];
 
@@ -60,6 +43,8 @@ function FilterAccordion({ title, children, defaultOpen = true }: FilterSection)
 }
 
 function FilterContent({
+  dbCategories,
+  dbBrands,
   selectedCategories,
   setSelectedCategories,
   selectedBrands,
@@ -71,6 +56,8 @@ function FilterContent({
   priceRange,
   setPriceRange,
 }: {
+  dbCategories: { name: string }[];
+  dbBrands: { name: string }[];
   selectedCategories: string[];
   setSelectedCategories: (v: string[]) => void;
   selectedBrands: string[];
@@ -87,39 +74,41 @@ function FilterContent({
 
   return (
     <>
-      <FilterAccordion title="Category">
-        <div className="space-y-2.5">
-          {categories.map((c) => (
-            <label key={c.label} className="flex items-center gap-[10px] cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={selectedCategories.includes(c.label)}
-                onChange={() => setSelectedCategories(toggleArray(selectedCategories, c.label))}
-                className="w-[20px] h-[20px] rounded-[6px] border-[1.5px] border-[#e4e7eb] accent-[#2563eb] cursor-pointer"
-              />
-              <span className="text-[13px] text-[#5b6472] group-hover:text-[#16181d] transition-colors flex-1">{c.label}</span>
-              <span className="text-[12px] text-[#9aa3ad]">{c.count}</span>
-            </label>
-          ))}
-        </div>
-      </FilterAccordion>
+      {dbCategories.length > 0 && (
+        <FilterAccordion title="Category">
+          <div className="space-y-2.5">
+            {dbCategories.map((c) => (
+              <label key={c.name} className="flex items-center gap-[10px] cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={selectedCategories.includes(c.name)}
+                  onChange={() => setSelectedCategories(toggleArray(selectedCategories, c.name))}
+                  className="w-[20px] h-[20px] rounded-[6px] border-[1.5px] border-[#e4e7eb] accent-[#2563eb] cursor-pointer"
+                />
+                <span className="text-[13px] text-[#5b6472] group-hover:text-[#16181d] transition-colors flex-1">{c.name}</span>
+              </label>
+            ))}
+          </div>
+        </FilterAccordion>
+      )}
 
-      <FilterAccordion title="Brand">
-        <div className="space-y-2.5">
-          {brands.map((b) => (
-            <label key={b.label} className="flex items-center gap-[10px] cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={selectedBrands.includes(b.label)}
-                onChange={() => setSelectedBrands(toggleArray(selectedBrands, b.label))}
-                className="w-[20px] h-[20px] rounded-[6px] border-[1.5px] border-[#e4e7eb] accent-[#2563eb] cursor-pointer"
-              />
-              <span className="text-[13px] text-[#5b6472] group-hover:text-[#16181d] transition-colors flex-1">{b.label}</span>
-              <span className="text-[12px] text-[#9aa3ad]">{b.count}</span>
-            </label>
-          ))}
-        </div>
-      </FilterAccordion>
+      {dbBrands.length > 0 && (
+        <FilterAccordion title="Brand">
+          <div className="space-y-2.5">
+            {dbBrands.map((b) => (
+              <label key={b.name} className="flex items-center gap-[10px] cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={selectedBrands.includes(b.name)}
+                  onChange={() => setSelectedBrands(toggleArray(selectedBrands, b.name))}
+                  className="w-[20px] h-[20px] rounded-[6px] border-[1.5px] border-[#e4e7eb] accent-[#2563eb] cursor-pointer"
+                />
+                <span className="text-[13px] text-[#5b6472] group-hover:text-[#16181d] transition-colors flex-1">{b.name}</span>
+              </label>
+            ))}
+          </div>
+        </FilterAccordion>
+      )}
 
       <FilterAccordion title="Price Range">
         <div className="space-y-3">
@@ -206,6 +195,13 @@ export function FiltersSidebar({ mobileOpen, onMobileClose, onFiltersChange }: F
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 500]);
+  const [dbCategories, setDbCategories] = useState<{ name: string }[]>([]);
+  const [dbBrands, setDbBrands] = useState<{ name: string }[]>([]);
+
+  useEffect(() => {
+    getCategories().then((c) => setDbCategories(c)).catch(() => {});
+    getBrands().then((b) => setDbBrands(b)).catch(() => {});
+  }, []);
 
   const activeCount = selectedCategories.length + selectedBrands.length + selectedSizes.length + selectedColors.length;
 
@@ -228,6 +224,7 @@ export function FiltersSidebar({ mobileOpen, onMobileClose, onFiltersChange }: F
   }, [selectedBrands, selectedCategories, selectedSizes, selectedColors, priceRange, onFiltersChange]);
 
   const filterProps = {
+    dbCategories, dbBrands,
     selectedCategories, setSelectedCategories,
     selectedBrands, setSelectedBrands,
     selectedSizes, setSelectedSizes,

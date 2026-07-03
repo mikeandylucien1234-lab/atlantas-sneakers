@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, createContext, useContext, useCallback } from "react";
+import { useState, useEffect, createContext, useCallback } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { AdminTopbar } from "@/components/admin/topbar";
@@ -28,15 +28,13 @@ type AdminCtx = {
   showToast: (message: string, type?: "success" | "info" | "warn") => void;
 };
 
-export const AdminContext = createContext<AdminCtx>({
+const AdminContext = createContext<AdminCtx>({
   dark: false,
   toggleDark: () => {},
   activeModule: "dashboard",
   setActiveModule: () => {},
   showToast: () => {},
 });
-
-export const useAdmin = () => useContext(AdminContext);
 
 const moduleLabel = (id: string) => {
   for (const g of navGroups) {

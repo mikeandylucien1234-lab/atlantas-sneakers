@@ -11,7 +11,6 @@ const links = [
   { label: "Kids", href: "/category/kids" },
   { label: "New Arrivals", href: "/new-arrivals" },
   { label: "Best Sellers", href: "/best-sellers" },
-  { label: "Collections", href: "/collections" },
   { label: "Deals", href: "/deals" },
 ];
 

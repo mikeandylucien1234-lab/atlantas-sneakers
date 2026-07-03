@@ -8,7 +8,7 @@ import { useWishlistStore } from "@/lib/store/wishlist-store";
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
-  { icon: LayoutGrid, label: "Categories", href: "/categories" },
+  { icon: LayoutGrid, label: "Shop", href: "/shop" },
   { icon: Heart, label: "Wishlist", href: "/wishlist", hasBadge: true },
   { icon: User, label: "Account", href: "/account" },
 ];

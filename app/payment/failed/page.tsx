@@ -43,7 +43,7 @@ function FailedContent() {
                 <ArrowLeft className="w-4 h-4" /> Back to Checkout
               </Button>
             </Link>
-            <Link href="/contact" className="flex-1">
+            <Link href="/about" className="flex-1">
               <Button variant="outline" size="lg" className="w-full gap-2">
                 <MessageSquare className="w-4 h-4" /> Contact Support
               </Button>

@@ -4,26 +4,16 @@ import { Lock } from "lucide-react";
 const shopLinks = [
   { label: "New Arrivals", href: "/new-arrivals" },
   { label: "Best Sellers", href: "/best-sellers" },
-  { label: "Featured Collections", href: "/collections" },
   { label: "Shop All", href: "/shop" },
   { label: "Deals", href: "/deals" },
 ];
 
 const helpLinks = [
-  { label: "Help Center", href: "/help" },
-  { label: "Track Order", href: "/order-tracking" },
-  { label: "Shipping Policy", href: "/shipping" },
-  { label: "Returns & Refunds", href: "/returns" },
-  { label: "Contact Us", href: "/contact" },
-  { label: "FAQ", href: "/faq" },
+  { label: "Track Order", href: "/track" },
 ];
 
 const companyLinks = [
   { label: "About Atlanta Sneakers", href: "/about" },
-  { label: "Referral Program", href: "/referral" },
-  { label: "Blog", href: "/blog" },
-  { label: "Careers", href: "/careers" },
-  { label: "Press", href: "/press" },
 ];
 
 const socials = ["IG", "TT", "YT", "FB", "X"];

@@ -22,7 +22,7 @@ export function Navbar() {
     <div className="max-w-[1240px] mx-auto px-4">
       <nav className="flex items-center gap-[26px] pb-[13px] overflow-x-auto scrollbar-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {links.map(({ label, href }) => {
-          const isActive = pathname === href;
+          const isActive = pathname === href || (href !== "/shop" && pathname.startsWith(href));
           return (
             <Link
               key={href}

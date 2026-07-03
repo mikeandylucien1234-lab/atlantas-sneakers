@@ -44,7 +44,7 @@ export function ProductCard({
         className
       )}
     >
-      <Link href={`/products/${slug}`} className="block">
+      <Link href={`/product/${slug}`} className="block">
         <div className="relative aspect-square bg-[#f4f5f7] overflow-hidden">
           <Image src={image} alt={name} fill className="object-cover transition-transform duration-[160ms] group-hover:scale-105" sizes="(max-width:768px) 50vw, 25vw" />
           <div className="absolute top-2 left-2 flex flex-col gap-1.5">
@@ -57,7 +57,7 @@ export function ProductCard({
 
       <button
         type="button"
-        onClick={() => toggleItem({ id: crypto.randomUUID(), productId: id, name, image, price })}
+        onClick={() => toggleItem({ id, productId: id, name, image, price })}
         className="absolute top-2 right-2 h-[30px] w-[30px] flex items-center justify-center rounded-full bg-white/[.92] shadow-[0_2px_7px_rgba(16,24,40,.16)] hover:bg-white transition-all duration-150 cursor-pointer"
       >
         <Heart
@@ -70,7 +70,7 @@ export function ProductCard({
 
       <div className="px-[13px] pt-[12px] pb-[14px]">
         <p className="text-[12px] font-medium text-[#9aa3ad] uppercase tracking-[.04em]">{brand}</p>
-        <Link href={`/products/${slug}`}>
+        <Link href={`/product/${slug}`}>
           <h3 className="mt-0.5 text-[13.5px] font-bold text-[#16181d] line-clamp-2 hover:text-[#2563eb] transition-colors leading-snug">
             {name}
           </h3>

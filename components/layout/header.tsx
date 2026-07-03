@@ -91,6 +91,7 @@ function SearchBar({ className, inputClassName }: { className?: string; inputCla
 export function Header() {
   const cartCount = useCartStore((s) => s.count);
   const wishlistCount = useWishlistStore((s) => s.count);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-[#eef0f3]">
@@ -135,7 +136,7 @@ export function Header() {
             <span className="text-[11px] font-semibold text-[#4b5563] hidden lg:block">Account</span>
           </Link>
 
-          <button className="flex md:hidden flex-col items-center gap-[3px] text-[#16181d] cursor-pointer">
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="flex md:hidden flex-col items-center gap-[3px] text-[#16181d] cursor-pointer" aria-label="Toggle menu">
             <Menu className="w-[23px] h-[23px]" />
           </button>
         </div>
@@ -147,6 +148,23 @@ export function Header() {
       </div>
 
       <Navbar />
+
+      {mobileMenuOpen && (
+        <nav className="md:hidden border-t border-[#eef0f3] bg-white px-4 py-3 space-y-1">
+          {[
+            { label: "Shop", href: "/shop" },
+            { label: "New Arrivals", href: "/new-arrivals" },
+            { label: "Best Sellers", href: "/best-sellers" },
+            { label: "Deals", href: "/deals" },
+            { label: "Wishlist", href: "/wishlist" },
+            { label: "Account", href: "/account" },
+          ].map(({ label, href }) => (
+            <Link key={href} href={href} onClick={() => setMobileMenuOpen(false)} className="block px-3 py-2.5 rounded-[10px] text-[14px] font-semibold text-[#16181d] hover:bg-[#f4f5f7] transition-colors">
+              {label}
+            </Link>
+          ))}
+        </nav>
+      )}
     </header>
   );
 }

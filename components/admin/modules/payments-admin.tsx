@@ -68,7 +68,10 @@ export function AdminPayments({ dark }: { dark: boolean }) {
 
     if (gatewayFilter !== "all") query = query.eq("gateway", gatewayFilter);
     if (statusFilter !== "all") query = query.eq("status", statusFilter);
-    if (search) query = query.or(`order_id.ilike.%${search}%,transaction_id.ilike.%${search}%`);
+    if (search) {
+      const sanitized = search.replace(/[%_,()]/g, "");
+      if (sanitized) query = query.or(`order_id.ilike.%${sanitized}%,transaction_id.ilike.%${sanitized}%`);
+    }
 
     const { data, error: err } = await query;
     if (err) throw new Error(err.message);

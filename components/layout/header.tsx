@@ -71,7 +71,7 @@ function AdminGate() {
           return;
         }
         setShow(false);
-        router.push("/admin");
+        window.location.href = "/admin";
       } catch {
         setError("Erreur de connexion");
         setSubmitting(false);

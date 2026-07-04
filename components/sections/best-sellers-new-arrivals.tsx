@@ -15,10 +15,15 @@ export function BestSellersNewArrivals() {
   const bsProducts = bestSellers?.length ? bestSellers : fallback ?? [];
   const naProducts = newArrivals?.length ? newArrivals : fallback ?? [];
 
+  const showBs = bsLoading || bsProducts.length > 0;
+  const showNa = naLoading || naProducts.length > 0;
+
+  if (!showBs && !showNa) return null;
+
   return (
     <div className="space-y-10 mt-10">
       {/* Best Sellers */}
-      <section>
+      {showBs && <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[19px] sm:text-[20px] font-extrabold tracking-[-.01em]">BEST SELLERS</h2>
           <Link href="/best-sellers" className="text-[13px] font-semibold text-[#2563eb] flex items-center gap-1 whitespace-nowrap hover:underline">
@@ -44,10 +49,10 @@ export function BestSellersNewArrivals() {
               ))
           }
         </div>
-      </section>
+      </section>}
 
       {/* New Arrivals */}
-      <section>
+      {showNa && <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[19px] sm:text-[20px] font-extrabold tracking-[-.01em]">NEW ARRIVALS</h2>
           <Link href="/new-arrivals" className="text-[13px] font-semibold text-[#2563eb] flex items-center gap-1 whitespace-nowrap hover:underline">
@@ -73,7 +78,7 @@ export function BestSellersNewArrivals() {
               ))
           }
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

@@ -14,6 +14,8 @@ export function TrendingNow() {
 
   const { data: products, loading } = useQuery(() => getFeaturedProducts(), []);
 
+  if (!loading && (!products || products.length === 0)) return null;
+
   return (
     <div className="mt-[38px]">
       <div className="flex items-center justify-between gap-3 mb-4">

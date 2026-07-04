@@ -50,12 +50,32 @@ function AdminGate() {
     return () => clearInterval(interval);
   }, [locked]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (locked) return;
+    if (locked || submitting) return;
     if (code === "0000") {
-      setShow(false);
-      router.push("/admin");
+      setSubmitting(true);
+      setError("");
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email: "admin@atlantasneaker.com",
+          password: "admin123",
+        });
+        if (authError) {
+          setError("Erreur de connexion");
+          setSubmitting(false);
+          return;
+        }
+        setShow(false);
+        router.push("/admin");
+      } catch {
+        setError("Erreur de connexion");
+        setSubmitting(false);
+      }
       return;
     }
     const next = attempts + 1;
@@ -99,8 +119,8 @@ function AdminGate() {
               <button type="button" onClick={close} className="flex-1 h-[44px] rounded-[12px] border border-[#e4e7eb] text-[14px] font-semibold text-[#5b6472] hover:bg-[#f4f5f7] transition-colors cursor-pointer">
                 Annuler
               </button>
-              <button type="submit" disabled={locked || !code} className="flex-1 h-[44px] rounded-[12px] bg-[#16181d] text-white text-[14px] font-semibold hover:bg-[#2a2d33] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
-                Continuer
+              <button type="submit" disabled={locked || !code || submitting} className="flex-1 h-[44px] rounded-[12px] bg-[#16181d] text-white text-[14px] font-semibold hover:bg-[#2a2d33] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                {submitting ? "Connexion..." : "Continuer"}
               </button>
             </div>
           </form>

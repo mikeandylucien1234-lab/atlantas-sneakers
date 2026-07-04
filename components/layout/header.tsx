@@ -1,14 +1,118 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Heart, ShoppingCart, User, Menu } from "lucide-react";
+import { Search, Heart, ShoppingCart, User, Menu, Lock, X } from "lucide-react";
 import { Navbar } from "./navbar";
 import { useCartStore } from "@/lib/store/cart-store";
 import { useWishlistStore } from "@/lib/store/wishlist-store";
 import { searchProducts } from "@/lib/supabase/queries";
 import type { Product } from "@/types";
+
+function AdminGate() {
+  const router = useRouter();
+  const [show, setShow] = useState(false);
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [attempts, setAttempts] = useState(0);
+  const [locked, setLocked] = useState(false);
+  const [lockTimer, setLockTimer] = useState(0);
+  const clicksRef = useRef<number[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const now = Date.now();
+    clicksRef.current = clicksRef.current.filter((t) => now - t < 3000);
+    clicksRef.current.push(now);
+    if (clicksRef.current.length >= 5) {
+      clicksRef.current = [];
+      setShow(true);
+      setCode("");
+      setError("");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (show && inputRef.current) inputRef.current.focus();
+  }, [show]);
+
+  useEffect(() => {
+    if (!locked) return;
+    setLockTimer(30);
+    const interval = setInterval(() => {
+      setLockTimer((t) => {
+        if (t <= 1) { setLocked(false); setAttempts(0); clearInterval(interval); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [locked]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (locked) return;
+    if (code === "0000") {
+      setShow(false);
+      router.push("/admin");
+      return;
+    }
+    const next = attempts + 1;
+    setAttempts(next);
+    setError("Code incorrect");
+    setCode("");
+    if (next >= 5) setLocked(true);
+  };
+
+  const close = () => { setShow(false); setCode(""); setError(""); };
+
+  return { handleLogoClick, modal: show ? (
+    <>
+      <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-[3px] animate-[fadeIn_.2s_ease]" onClick={close} />
+      <div className="fixed inset-0 z-[201] flex items-center justify-center p-4 animate-[slideUp_.25s_ease]">
+        <div className="bg-white rounded-[20px] shadow-[0_24px_48px_rgba(0,0,0,.18)] w-full max-w-[360px] p-6 relative">
+          <button onClick={close} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#f4f5f7] text-[#9aa3ad] transition-colors cursor-pointer">
+            <X className="w-[18px] h-[18px]" />
+          </button>
+          <div className="flex flex-col items-center mb-5">
+            <div className="w-[52px] h-[52px] rounded-full bg-[#eef0f3] flex items-center justify-center mb-3">
+              <Lock className="w-[22px] h-[22px] text-[#16181d]" />
+            </div>
+            <h3 className="text-[17px] font-extrabold text-[#16181d]">Accès sécurisé</h3>
+          </div>
+          <form onSubmit={handleSubmit}>
+            <input
+              ref={inputRef}
+              type="password"
+              inputMode="numeric"
+              maxLength={8}
+              value={code}
+              onChange={(e) => { setCode(e.target.value); setError(""); }}
+              placeholder="Entrez le code"
+              disabled={locked}
+              className="w-full h-[48px] rounded-[12px] border border-[#e4e7eb] px-4 text-[15px] text-center font-semibold tracking-[.15em] text-[#16181d] placeholder:text-[#9aa3ad] placeholder:tracking-normal outline-none focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/20 transition-all disabled:opacity-50"
+            />
+            {error && !locked && <p className="text-[13px] text-[#ef4444] font-medium text-center mt-2">{error}</p>}
+            {locked && <p className="text-[13px] text-[#ef4444] font-medium text-center mt-2">Trop de tentatives. Réessayez dans {lockTimer}s</p>}
+            <div className="flex gap-3 mt-4">
+              <button type="button" onClick={close} className="flex-1 h-[44px] rounded-[12px] border border-[#e4e7eb] text-[14px] font-semibold text-[#5b6472] hover:bg-[#f4f5f7] transition-colors cursor-pointer">
+                Annuler
+              </button>
+              <button type="submit" disabled={locked || !code} className="flex-1 h-[44px] rounded-[12px] bg-[#16181d] text-white text-[14px] font-semibold hover:bg-[#2a2d33] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                Continuer
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+      `}</style>
+    </>
+  ) : null };
+}
 
 function SearchBar({ className, inputClassName }: { className?: string; inputClassName?: string }) {
   const router = useRouter();
@@ -92,12 +196,14 @@ export function Header() {
   const cartCount = useCartStore((s) => s.count);
   const wishlistCount = useWishlistStore((s) => s.count);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const adminGate = AdminGate();
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-[#eef0f3]">
+      {adminGate.modal}
       <div className="max-w-[1240px] mx-auto px-4 py-[14px] flex items-center gap-4 lg:gap-6">
-        {/* Logo */}
-        <Link href="/" className="shrink-0 leading-[.92] tracking-[-.02em]">
+        {/* Logo — 5 rapid clicks opens admin gate */}
+        <Link href="/" onClick={adminGate.handleLogoClick} className="shrink-0 leading-[.92] tracking-[-.02em] select-none">
           <div className="text-[18px] font-extrabold text-[#0a0b0d]">ATLANTA</div>
           <div className="text-[18px] font-extrabold text-[#2563eb]">SNEAKERS</div>
         </Link>

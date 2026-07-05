@@ -2,14 +2,24 @@ const { createServer } = require("http");
 const { parse } = require("url");
 const next = require("next");
 
-const app = next({ dev: false });
+const dev = false;
+const hostname = "0.0.0.0";
+const port = parseInt(process.env.PORT || "3000", 10);
+
+const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
-const port = process.env.PORT || 3000;
 
 app.prepare().then(() => {
-  createServer((req, res) => {
-    handle(req, res, parse(req.url, true));
-  }).listen(port, () => {
-    console.log(`> Ready on http://localhost:${port}`);
+  createServer(async (req, res) => {
+    try {
+      const parsedUrl = parse(req.url, true);
+      await handle(req, res, parsedUrl);
+    } catch (err) {
+      console.error("Error:", err);
+      res.statusCode = 500;
+      res.end("Internal Server Error");
+    }
+  }).listen(port, hostname, () => {
+    console.log(`Atlanta Sneakers ready on port ${port}`);
   });
 });

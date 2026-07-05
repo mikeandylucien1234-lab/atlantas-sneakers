@@ -62,7 +62,7 @@ function AdminGate() {
         const { createClient } = await import("@/lib/supabase/client");
         const supabase = createClient();
         const { error: authError } = await supabase.auth.signInWithPassword({
-          email: "admin@atlantasneaker.com",
+          email: "admin@atlantasneakers.com",
           password: "Admin2026!",
         });
         if (authError) {

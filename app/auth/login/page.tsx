@@ -29,24 +29,27 @@ function LoginForm() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const supabase = createClient();
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    if (err) {
-      setError(err.message);
-      setLoading(false);
-      return;
-    }
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-      if (profile?.role === "admin") {
-        router.push("/admin");
-        router.refresh();
+    try {
+      const supabase = createClient();
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) {
+        setError(typeof err.message === "string" && err.message ? err.message : "Invalid email or password");
+        setLoading(false);
         return;
       }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+        if (profile?.role === "admin") {
+          window.location.href = "/admin";
+          return;
+        }
+      }
+      window.location.href = redirectTo ?? "/";
+    } catch {
+      setError("Login failed. Please try again.");
+      setLoading(false);
     }
-    router.push(redirectTo ?? "/");
-    router.refresh();
   };
 
   const handleGoogle = async () => {

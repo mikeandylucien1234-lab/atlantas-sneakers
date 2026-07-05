@@ -22,22 +22,22 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError(null);
     setLoading(true);
     try {
       const supabase = createClient();
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
       if (err) {
-        setError(typeof err.message === "string" && err.message ? err.message : "Invalid email or password");
+        setError(err);
         setLoading(false);
         return;
       }
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = data?.user;
       if (user) {
         const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
         if (profile?.role === "admin") {
@@ -105,7 +105,7 @@ function LoginForm() {
             </Link>
           </div>
 
-          {error && <p className="text-[13px] font-medium text-[#ef4444]">{error}</p>}
+          {error && <p className="text-[13px] font-medium text-[#ef4444]">{typeof error === "string" ? error : error?.message || "Email ou mot de passe incorrect"}</p>}
 
           <Button type="submit" size="lg" className="w-full" loading={loading}>
             Sign In

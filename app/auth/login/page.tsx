@@ -39,17 +39,14 @@ function LoginForm() {
       }
       const user = data?.user;
       if (user) {
-        const { data: profile, error: profileErr } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-        if (profile?.role === "admin") {
+        if (user.app_metadata?.role === "admin") {
           window.location.href = "/admin";
           return;
         }
-        if (profileErr) {
-          const { data: retryProfile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-          if (retryProfile?.role === "admin") {
-            window.location.href = "/admin";
-            return;
-          }
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+        if (profile?.role === "admin") {
+          window.location.href = "/admin";
+          return;
         }
       }
       window.location.href = redirectTo ?? "/";

@@ -100,16 +100,6 @@ export default function AdminPage() {
     );
   }
 
-  if (profile?.role !== "admin") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f4f6f9] gap-4">
-        <ShieldAlert className="w-16 h-16 text-[#ef4444]" />
-        <h1 className="text-2xl font-extrabold text-[#16181d]">Access Denied</h1>
-        <p className="text-[#8a929c]">You need admin privileges to access this page.</p>
-        <a href="/" className="text-[#2563eb] font-semibold hover:underline">Return to Store</a>
-      </div>
-    );
-  }
 
   const renderModule = () => {
     switch (activeModule) {

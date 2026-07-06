@@ -17,6 +17,7 @@ import { AdminPaymentLogs } from "@/components/admin/modules/payment-logs";
 import { AdminReports } from "@/components/admin/modules/reports";
 import { AdminCategories } from "@/components/admin/modules/categories";
 import { AdminBrands } from "@/components/admin/modules/brands";
+import { AdminInventory } from "@/components/admin/modules/inventory";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -59,7 +60,6 @@ const tableModules: Record<string, { table: string; columns: string[] }> = {
   tickets: { table: "tickets", columns: ["subject", "status", "created_at"] },
   rewards: { table: "profiles", columns: ["full_name", "points", "role"] },
   coupons: { table: "coupons", columns: ["code", "type", "value", "is_active"] },
-  inventory: { table: "product_variants", columns: ["sku", "size", "stock"] },
   flashdeals: { table: "flash_deals", columns: ["deal_price", "is_active", "ends_at"] },
   staff: { table: "profiles", columns: ["full_name", "email", "role"] },
   roles: { table: "profiles", columns: ["role"] },
@@ -128,6 +128,8 @@ export default function AdminPage() {
         return <AdminCategories dark={dark} />;
       case "brands":
         return <AdminBrands dark={dark} />;
+      case "inventory":
+        return <AdminInventory dark={dark} />;
       default:
         if (settingsModules.has(activeModule)) {
           return <AdminSettings dark={dark} moduleId={activeModule} />;

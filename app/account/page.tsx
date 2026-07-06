@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, Package, Heart, MapPin, CreditCard, Trophy, Settings, LogOut, ChevronRight, Edit3, Star, Loader2, Trash2 } from "lucide-react";
+import { User, Package, Heart, MapPin, CreditCard, Trophy, Settings, LogOut, ChevronRight, Edit3, Star, Loader2, Trash2, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -149,6 +149,14 @@ export default function AccountPage() {
                 <ChevronRight className="w-[14px] h-[14px] ml-auto opacity-40" />
               </button>
             ))}
+            <Link
+              href="/admin"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[13px] font-semibold text-[#5b6472] hover:bg-[#f7f8fa] transition-colors"
+            >
+              <Shield className="w-[18px] h-[18px]" />
+              Admin Panel
+              <ChevronRight className="w-[14px] h-[14px] ml-auto opacity-40" />
+            </Link>
             <button
               type="button"
               onClick={handleSignOut}

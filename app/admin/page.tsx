@@ -14,6 +14,7 @@ import { AdminSettings } from "@/components/admin/modules/settings";
 import { AdminIntegrations } from "@/components/admin/modules/integrations";
 import { AdminPayments } from "@/components/admin/modules/payments-admin";
 import { AdminPaymentLogs } from "@/components/admin/modules/payment-logs";
+import { AdminReports } from "@/components/admin/modules/reports";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -121,6 +122,8 @@ export default function AdminPage() {
         return <AdminPayments dark={dark} />;
       case "paymentlogs":
         return <AdminPaymentLogs dark={dark} />;
+      case "reports":
+        return <AdminReports dark={dark} />;
       default:
         if (settingsModules.has(activeModule)) {
           return <AdminSettings dark={dark} moduleId={activeModule} />;

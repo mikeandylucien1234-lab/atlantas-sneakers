@@ -19,6 +19,7 @@ import { AdminCategories } from "@/components/admin/modules/categories";
 import { AdminBrands } from "@/components/admin/modules/brands";
 import { AdminInventory } from "@/components/admin/modules/inventory";
 import { AdminFlashDeals } from "@/components/admin/modules/flash-deals";
+import { AdminCustomers } from "@/components/admin/modules/customers";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -56,7 +57,6 @@ const settingsModules = new Set([
 ]);
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
-  customers: { table: "profiles", columns: ["full_name", "email", "role"] },
   reviews: { table: "reviews", columns: ["rating", "comment", "created_at"] },
   tickets: { table: "tickets", columns: ["subject", "status", "created_at"] },
   rewards: { table: "profiles", columns: ["full_name", "points", "role"] },
@@ -132,6 +132,8 @@ export default function AdminPage() {
         return <AdminInventory dark={dark} />;
       case "flashdeals":
         return <AdminFlashDeals dark={dark} />;
+      case "customers":
+        return <AdminCustomers dark={dark} />;
       default:
         if (settingsModules.has(activeModule)) {
           return <AdminSettings dark={dark} moduleId={activeModule} />;

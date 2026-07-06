@@ -15,6 +15,7 @@ import { AdminIntegrations } from "@/components/admin/modules/integrations";
 import { AdminPayments } from "@/components/admin/modules/payments-admin";
 import { AdminPaymentLogs } from "@/components/admin/modules/payment-logs";
 import { AdminReports } from "@/components/admin/modules/reports";
+import { AdminCategories } from "@/components/admin/modules/categories";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -52,7 +53,6 @@ const settingsModules = new Set([
 ]);
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
-  categories: { table: "categories", columns: ["name", "slug", "is_active"] },
   brands: { table: "brands", columns: ["name", "slug", "is_active"] },
   customers: { table: "profiles", columns: ["full_name", "email", "role"] },
   reviews: { table: "reviews", columns: ["rating", "comment", "created_at"] },
@@ -124,6 +124,8 @@ export default function AdminPage() {
         return <AdminPaymentLogs dark={dark} />;
       case "reports":
         return <AdminReports dark={dark} />;
+      case "categories":
+        return <AdminCategories dark={dark} />;
       default:
         if (settingsModules.has(activeModule)) {
           return <AdminSettings dark={dark} moduleId={activeModule} />;

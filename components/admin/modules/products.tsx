@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { Product, Category, Brand, ProductVariant, Review, FlashDeal } from "@/types";
 
-type Props = { dark: boolean };
+type Props = { dark: boolean; onNavigate?: (m: string) => void };
 
 type SortKey = "name" | "price" | "stock" | "created_at" | "rating" | "sales";
 type SortOrder = "asc" | "desc";
@@ -69,7 +69,7 @@ const statusColors: Record<string, { bg: string; text: string; darkBg: string; d
 
 // ──────────────────────────── MAIN COMPONENT ────────────────────────────
 
-export function AdminProducts({ dark }: Props) {
+export function AdminProducts({ dark, onNavigate }: Props) {
   // Theme helpers
   const p = dark ? "bg-[#171c24]" : "bg-white";
   const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
@@ -511,7 +511,7 @@ export function AdminProducts({ dark }: Props) {
           <p className={cn("text-sm mt-0.5", sub)}>Manage your complete product catalog.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={openCreate} className="h-[40px] px-4 rounded-[11px] bg-[#2563eb] text-white text-[13px] font-semibold flex items-center gap-2 hover:bg-[#1d4ed8] transition-colors">
+          <button onClick={() => onNavigate ? onNavigate("addproduct") : openCreate()} className="h-[40px] px-4 rounded-[11px] bg-[#2563eb] text-white text-[13px] font-semibold flex items-center gap-2 hover:bg-[#1d4ed8] transition-colors">
             <Plus className="w-4 h-4" /> Add Product
           </button>
           <button onClick={() => handleExport("csv")} className={cn("h-[40px] px-3 rounded-[11px] border text-[13px] font-semibold flex items-center gap-2 transition-colors", brd, txt, hover)}>

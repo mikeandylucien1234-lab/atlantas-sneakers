@@ -20,6 +20,7 @@ import { AdminBrands } from "@/components/admin/modules/brands";
 import { AdminInventory } from "@/components/admin/modules/inventory";
 import { AdminFlashDeals } from "@/components/admin/modules/flash-deals";
 import { AdminCustomers } from "@/components/admin/modules/customers";
+import { ProductCreate } from "@/components/admin/modules/product-create";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -75,6 +76,7 @@ export default function AdminPage() {
   const [activeModule, setActiveModule] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
+  const [editProductId, setEditProductId] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("admin-dark");
@@ -109,7 +111,7 @@ export default function AdminPage() {
       case "orders":
         return <AdminOrders dark={dark} />;
       case "products":
-        return <AdminProducts dark={dark} />;
+        return <AdminProducts dark={dark} onNavigate={setActiveModule} />;
       case "banners":
         return <AdminBanners dark={dark} />;
       case "backup":
@@ -134,6 +136,10 @@ export default function AdminPage() {
         return <AdminFlashDeals dark={dark} />;
       case "customers":
         return <AdminCustomers dark={dark} />;
+      case "addproduct":
+        return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
+      case "editproduct":
+        return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} editProductId={editProductId} />;
       default:
         if (settingsModules.has(activeModule)) {
           return <AdminSettings dark={dark} moduleId={activeModule} />;

@@ -28,6 +28,7 @@ import { AdminCoupons } from "@/components/admin/modules/coupons";
 import { AdminHomepage } from "@/components/admin/modules/homepage";
 import { AdminBlog } from "@/components/admin/modules/blog";
 import { AdminMedia } from "@/components/admin/modules/media";
+import { AdminFaq } from "@/components/admin/modules/faq";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -61,7 +62,7 @@ const moduleLabel = (id: string) => {
 const settingsModules = new Set([
   "shipping", "returns", "payments", "tax", "seo", "ganalytics",
   "metapixel", "tiktok", "gsc", "notifications", "security",
-  "health", "emails", "faq",
+  "health", "emails",
 ]);
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
@@ -153,6 +154,8 @@ export default function AdminPage() {
         return <AdminBlog dark={dark} />;
       case "media":
         return <AdminMedia dark={dark} />;
+      case "faq":
+        return <AdminFaq dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

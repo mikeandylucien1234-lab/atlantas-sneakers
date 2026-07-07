@@ -21,6 +21,7 @@ import { AdminInventory } from "@/components/admin/modules/inventory";
 import { AdminFlashDeals } from "@/components/admin/modules/flash-deals";
 import { AdminCustomers } from "@/components/admin/modules/customers";
 import { ProductCreate } from "@/components/admin/modules/product-create";
+import { AdminReviews } from "@/components/admin/modules/reviews";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -58,7 +59,6 @@ const settingsModules = new Set([
 ]);
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
-  reviews: { table: "reviews", columns: ["rating", "comment", "created_at"] },
   tickets: { table: "tickets", columns: ["subject", "status", "created_at"] },
   rewards: { table: "profiles", columns: ["full_name", "points", "role"] },
   coupons: { table: "coupons", columns: ["code", "type", "value", "is_active"] },
@@ -136,6 +136,8 @@ export default function AdminPage() {
         return <AdminFlashDeals dark={dark} />;
       case "customers":
         return <AdminCustomers dark={dark} />;
+      case "reviews":
+        return <AdminReviews dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

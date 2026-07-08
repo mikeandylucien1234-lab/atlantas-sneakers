@@ -56,7 +56,11 @@ function SuccessContent() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 mt-6">
-          <Button variant="outline" size="lg" className="flex-1 gap-2">
+          <Button
+            variant="outline" size="lg" className="flex-1 gap-2"
+            onClick={() => window.open(`/api/invoice?order=${encodeURIComponent(orderNumber)}`, "_blank")}
+            disabled={orderNumber === "—"}
+          >
             <Download className="w-4 h-4" /> Download Invoice
           </Button>
           <Link href={`/track?order=${orderNumber}`} className="flex-1">

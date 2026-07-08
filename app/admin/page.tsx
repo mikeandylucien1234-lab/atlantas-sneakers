@@ -31,6 +31,7 @@ import { AdminMedia } from "@/components/admin/modules/media";
 import { AdminFaq } from "@/components/admin/modules/faq";
 import { AdminShipping } from "@/components/admin/modules/shipping";
 import { AdminReturns } from "@/components/admin/modules/returns";
+import { AdminPaymentSettings } from "@/components/admin/modules/payment-settings";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -62,7 +63,7 @@ const moduleLabel = (id: string) => {
 };
 
 const settingsModules = new Set([
-  "payments", "tax", "seo", "ganalytics",
+  "tax", "seo", "ganalytics",
   "metapixel", "tiktok", "gsc", "notifications", "security",
   "health", "emails",
 ]);
@@ -162,6 +163,8 @@ export default function AdminPage() {
         return <AdminShipping dark={dark} />;
       case "returns":
         return <AdminReturns dark={dark} />;
+      case "payments":
+        return <AdminPaymentSettings dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

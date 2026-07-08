@@ -201,6 +201,28 @@ export default function CheckoutPage() {
   const [createdOrderNumber, setCreatedOrderNumber] = useState<string | null>(null);
   const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
 
+  // Payment methods enabled by admin (payment_settings table). null = loading, fall back to all.
+  const [enabledGateways, setEnabledGateways] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    fetch("/api/payments/methods")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.methods?.length) {
+          const enabled = new Set<string>(d.methods.map((m: { gateway: string }) => m.gateway));
+          setEnabledGateways(enabled);
+          // If current selection is disabled, switch to first enabled method
+          if (!enabled.has("stripe")) {
+            const first = paymentMethods.find((pm) => enabled.has(pm.id));
+            if (first) setPaymentMethod(first.id);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+  const visiblePaymentMethods = enabledGateways
+    ? paymentMethods.filter((pm) => enabledGateways.has(pm.id))
+    : paymentMethods;
+
   const validateAddress = (): boolean => {
     const errors: Record<string, string> = {};
     if (!email.trim()) errors.email = "Email is required";
@@ -446,7 +468,7 @@ export default function CheckoutPage() {
             <>
               <h2 className="text-[18px] font-extrabold text-[#16181d] mb-5">Payment Method</h2>
               <div className="space-y-2.5">
-                {paymentMethods.map((pm) => {
+                {visiblePaymentMethods.map((pm) => {
                   const Icon = pm.icon;
                   return (
                     <label key={pm.id} className={cn("flex items-center gap-4 p-4 rounded-[14px] border-[1.5px] cursor-pointer transition-colors", paymentMethod === pm.id ? "border-[#2563eb] bg-[#eff6ff]" : "border-[#e4e7eb] hover:border-[#2563eb]")}>

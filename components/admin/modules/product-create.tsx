@@ -6,7 +6,8 @@ import {
   ChevronDown, ChevronUp, Save, Send, ArrowLeft, Loader2, Plus, X,
   Package, Image as ImageIcon, DollarSign, Tag, Search, FileText,
   Truck, Shield, Zap, Eye, Globe, Layers, AlertTriangle, CheckCircle2,
-  Star, BarChart3, Link2, Hash, Percent, Clock, Box, Palette
+  Star, BarChart3, Link2, Hash, Percent, Clock, Box, Palette,
+  Upload, ChevronLeft, ChevronRight, Link as LinkIcon
 } from "lucide-react";
 
 type Props = { dark: boolean; onBack: () => void; editProductId?: string | null };
@@ -86,6 +87,12 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
 
   const [tagInput, setTagInput] = useState("");
   const [imageInput, setImageInput] = useState("");
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [existingDealId, setExistingDealId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const showToast = useCallback((message: string, type: "success" | "error" = "success") => {
@@ -131,8 +138,10 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
     fetch(`/api/admin/products?section=detail&id=${editProductId}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (!data?.product) return;
-        const pr = data.product;
+        if (!data || data.error || !data.id) return;
+        const pr = data;
+        const activeDeal = (pr.flash_deals || []).find((d: { is_active: boolean; ends_at: string }) => d.is_active && new Date(d.ends_at) > new Date());
+        setExistingDealId(activeDeal?.id || null);
         setForm({
           name: pr.name || "",
           slug: pr.slug || "",
@@ -146,13 +155,18 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
           is_featured: pr.is_featured || false,
           is_new: pr.is_new || false,
           status: pr.status || "draft",
-          variants: (pr.variants || data.variants || []).map((v: VariantRow) => ({
+          variants: (pr.variants || []).map((v: VariantRow) => ({
             id: v.id, size: v.size || "", color: v.color || "",
             color_hex: v.color_hex || "#000000", stock: v.stock || 0, sku: v.sku || "",
           })),
-          meta_title: "", meta_description: "",
-          free_shipping: false, shipping_cost: 0, weight: 0,
-          flash_deal: false, flash_deal_price: 0, flash_deal_ends: "",
+          meta_title: pr.meta_title || "",
+          meta_description: pr.meta_description || "",
+          free_shipping: pr.free_shipping || false,
+          shipping_cost: Number(pr.shipping_cost) || 0,
+          weight: Number(pr.weight) || 0,
+          flash_deal: !!activeDeal,
+          flash_deal_price: activeDeal ? Number(activeDeal.deal_price) || 0 : 0,
+          flash_deal_ends: activeDeal?.ends_at ? new Date(activeDeal.ends_at).toISOString().slice(0, 16) : "",
         });
       })
       .catch(() => {})
@@ -214,6 +228,11 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
         is_featured: form.is_featured,
         is_new: form.is_new,
         status: publish ? "active" : form.status,
+        meta_title: form.meta_title || null,
+        meta_description: form.meta_description || null,
+        weight: form.weight || 0,
+        free_shipping: form.free_shipping,
+        shipping_cost: form.free_shipping ? 0 : form.shipping_cost || 0,
       };
 
       const body: Record<string, unknown> = { ...productData, variants: form.variants.map(v => ({ size: v.size, color: v.color, color_hex: v.color_hex, stock: v.stock, sku: v.sku })) };
@@ -233,22 +252,37 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
 
       const result = await res.json();
 
-      // Create flash deal if enabled
+      // Create or update flash deal if enabled
       if (form.flash_deal && form.flash_deal_price > 0 && form.flash_deal_ends) {
         const productId = editProductId || result.id;
         if (productId) {
-          await fetch("/api/admin/flash-deals", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              product_id: productId,
-              deal_price: form.flash_deal_price,
-              original_price: form.price,
-              ends_at: new Date(form.flash_deal_ends).toISOString(),
-              is_active: publish,
-            }),
-          });
+          const dealPayload = {
+            deal_price: form.flash_deal_price,
+            original_price: form.price,
+            ends_at: new Date(form.flash_deal_ends).toISOString(),
+            is_active: publish,
+          };
+          if (existingDealId) {
+            await fetch("/api/admin/flash-deals", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: existingDealId, ...dealPayload }),
+            });
+          } else {
+            await fetch("/api/admin/flash-deals", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ product_id: productId, ...dealPayload }),
+            });
+          }
         }
+      } else if (!form.flash_deal && existingDealId) {
+        // Deal was turned off — deactivate it
+        await fetch("/api/admin/flash-deals", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: existingDealId, is_active: false }),
+        });
       }
 
       showToast(editProductId ? "Product updated" : publish ? "Product published" : "Draft saved");
@@ -291,24 +325,76 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
     }
   };
 
+  const uploadFiles = async (files: FileList | File[]) => {
+    const list = Array.from(files).filter(f => f.type.startsWith("image/"));
+    if (list.length === 0) {
+      showToast("Please select image files only", "error");
+      return;
+    }
+    setUploading(true);
+    setUploadProgress(`Uploading ${list.length} image${list.length > 1 ? "s" : ""}...`);
+    try {
+      const fd = new FormData();
+      list.forEach(f => fd.append("files", f));
+      fd.append("folder", "products");
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      const urls: string[] = (data.files || []).map((f: { url: string }) => f.url);
+      if (urls.length > 0) {
+        setForm(f => ({ ...f, images: [...f.images, ...urls.filter(u => !f.images.includes(u))] }));
+        setErrors(e => { const n = { ...e }; delete n.images; return n; });
+        showToast(`${urls.length} image${urls.length > 1 ? "s" : ""} uploaded`);
+      }
+      if (data.errors?.length > 0) {
+        showToast(`${data.errors[0].name}: ${data.errors[0].error}`, "error");
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Upload failed", "error");
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removeImage = async (index: number) => {
+    const url = form.images[index];
+    set("images", form.images.filter((_, j) => j !== index));
+    // Remove from storage if hosted in our bucket (fire and forget)
+    if (url.includes("/product-images/")) {
+      fetch("/api/admin/upload", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      }).catch(() => {});
+    }
+  };
+
+  const moveImage = (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= form.images.length) return;
+    const imgs = [...form.images];
+    [imgs[index], imgs[target]] = [imgs[target], imgs[index]];
+    set("images", imgs);
+  };
+
+  const setMainImage = (index: number) => {
+    if (index === 0) return;
+    const imgs = [...form.images];
+    const [img] = imgs.splice(index, 1);
+    imgs.unshift(img);
+    set("images", imgs);
+  };
+
   const toggleSection = (key: string) => {
     setSections(s => ({ ...s, [key]: !s[key] }));
   };
 
-  const SectionCard = ({ id, title, icon: Icon, children, error: hasError }: { id: string; title: string; icon: typeof Package; children: React.ReactNode; error?: boolean }) => (
-    <div className={cn(cardCls, hasError && "border-red-500/50")}>
-      <button onClick={() => toggleSection(id)} className={cn("w-full flex items-center justify-between p-4 transition-colors", hover)}>
-        <div className="flex items-center gap-2.5">
-          <div className={cn("w-8 h-8 rounded-[9px] flex items-center justify-center", hasError ? "bg-red-500/10" : "bg-[#2563eb]/10")}>
-            <Icon className={cn("w-4 h-4", hasError ? "text-red-500" : "text-[#2563eb]")} />
-          </div>
-          <span className={cn("text-sm font-bold", txt)}>{title}</span>
-        </div>
-        {sections[id] ? <ChevronUp className={cn("w-4 h-4", sub)} /> : <ChevronDown className={cn("w-4 h-4", sub)} />}
-      </button>
-      {sections[id] && <div className={cn("px-4 pb-4 border-t pt-4", brd)}>{children}</div>}
-    </div>
-  );
+  // Stable wrapper: real component is hoisted top-level (SectionCardBase) so
+  // children keep their identity across renders and inputs don't lose focus.
+  const SectionCard = SectionCardBase;
+  const sectionCtx = { cardCls, hover, txt, sub, brd, sections, toggleSection };
 
   const FieldError = ({ field }: { field: string }) => errors[field] ? <p className="text-red-500 text-[11px] mt-1 font-medium">{errors[field]}</p> : null;
 
@@ -351,7 +437,7 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
         {/* LEFT COLUMN */}
         <div className="space-y-4">
           {/* PRODUCT INFORMATION */}
-          <SectionCard id="info" title="Product Information" icon={Package} error={!!(errors.name || errors.category_id)}>
+          <SectionCard ctx={sectionCtx} id="info" title="Product Information" icon={Package} error={!!(errors.name || errors.category_id)}>
             <div className="space-y-3">
               <div>
                 <label className={labelCls}>Product Name *</label>
@@ -404,38 +490,105 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
           </SectionCard>
 
           {/* MEDIA */}
-          <SectionCard id="media" title="Product Images" icon={ImageIcon} error={!!errors.images}>
+          <SectionCard ctx={sectionCtx} id="media" title="Product Images" icon={ImageIcon} error={!!errors.images}>
             <div className="space-y-3">
-              <div className="flex gap-2">
-                <input type="text" value={imageInput} onChange={e => setImageInput(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addImage())} placeholder="Paste image URL..." className={cn(inpCls, "flex-1", errors.images && "border-red-500")} />
-                <button onClick={addImage} className="h-[42px] px-4 rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8] transition-colors">Add</button>
+              {/* Hidden native file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/svg+xml"
+                multiple
+                className="hidden"
+                onChange={e => e.target.files && e.target.files.length > 0 && uploadFiles(e.target.files)}
+              />
+
+              {/* Dropzone */}
+              <div
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+                onDrop={e => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  if (!uploading && e.dataTransfer.files.length > 0) uploadFiles(e.dataTransfer.files);
+                }}
+                className={cn(
+                  "rounded-[12px] border-2 border-dashed p-6 text-center cursor-pointer transition-colors select-none",
+                  dragOver ? "border-[#2563eb] bg-[#2563eb]/5" : brd,
+                  errors.images && "border-red-500/60",
+                  uploading && "opacity-60 pointer-events-none"
+                )}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin text-[#2563eb]" />
+                    <p className={cn("text-sm font-semibold", txt)}>{uploadProgress}</p>
+                    <p className={cn("text-xs mt-1", sub)}>Please wait...</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className={cn("w-8 h-8 mx-auto mb-2", dragOver ? "text-[#2563eb]" : sub)} />
+                    <p className={cn("text-sm font-semibold", txt)}>Click to browse or drag & drop images</p>
+                    <p className={cn("text-xs mt-1", sub)}>JPEG, PNG, WebP, GIF, AVIF, SVG — up to 8MB each, 12 max per upload</p>
+                  </>
+                )}
               </div>
               <FieldError field="images" />
+
+              {/* URL fallback */}
+              <div>
+                <button onClick={() => setShowUrlInput(v => !v)} className={cn("text-xs font-semibold flex items-center gap-1.5 transition-colors", showUrlInput ? "text-[#2563eb]" : sub, "hover:text-[#2563eb]")}>
+                  <LinkIcon className="w-3.5 h-3.5" /> {showUrlInput ? "Hide URL input" : "Add image from URL instead"}
+                </button>
+                {showUrlInput && (
+                  <div className="flex gap-2 mt-2">
+                    <input type="url" value={imageInput} onChange={e => setImageInput(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addImage())} placeholder="https://example.com/image.jpg" className={cn(inpCls, "flex-1")} />
+                    <button onClick={addImage} disabled={!imageInput.trim()} className="h-[42px] px-4 rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50">Add</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Image grid with reorder / main / delete */}
               {form.images.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {form.images.map((img, i) => (
-                    <div key={i} className="relative group rounded-[10px] overflow-hidden aspect-square">
-                      <img src={img} alt="" className="w-full h-full object-cover" />
-                      <button onClick={() => set("images", form.images.filter((_, j) => j !== i))} className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div key={`${img}-${i}`} className={cn("relative group rounded-[10px] overflow-hidden aspect-square border", i === 0 ? "border-[#2563eb]" : brd)}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img} alt={`Product image ${i + 1}`} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23e5e7eb' width='100' height='100'/%3E%3C/svg%3E"; }} />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors" />
+                      {/* Delete */}
+                      <button onClick={() => removeImage(i)} title="Remove image" className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
                         <X className="w-3 h-3" />
                       </button>
-                      {i === 0 && <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#2563eb] text-white">MAIN</span>}
+                      {/* Reorder + main */}
+                      <div className="absolute bottom-1 inset-x-1 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => moveImage(i, -1)} disabled={i === 0} title="Move left" className="w-6 h-6 rounded-full bg-white/90 text-black flex items-center justify-center disabled:opacity-30 hover:bg-white">
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        {i !== 0 && (
+                          <button onClick={() => setMainImage(i)} title="Set as main image" className="px-1.5 h-6 rounded-full bg-white/90 text-black text-[9px] font-bold hover:bg-white">
+                            SET MAIN
+                          </button>
+                        )}
+                        <button onClick={() => moveImage(i, 1)} disabled={i === form.images.length - 1} title="Move right" className="w-6 h-6 rounded-full bg-white/90 text-black flex items-center justify-center disabled:opacity-30 hover:bg-white">
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {i === 0 && <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#2563eb] text-white">MAIN</span>}
                     </div>
                   ))}
-                </div>
-              )}
-              {form.images.length === 0 && (
-                <div className={cn("rounded-[12px] border-2 border-dashed p-8 text-center", brd)}>
-                  <ImageIcon className={cn("w-8 h-8 mx-auto mb-2", sub)} />
-                  <p className={cn("text-sm font-semibold", txt)}>No images yet</p>
-                  <p className={cn("text-xs mt-1", sub)}>Paste image URLs above to add product photos</p>
+                  {/* Add more tile */}
+                  <button onClick={() => !uploading && fileInputRef.current?.click()} className={cn("rounded-[10px] border-2 border-dashed aspect-square flex flex-col items-center justify-center gap-1 transition-colors", brd, hover)}>
+                    {uploading ? <Loader2 className={cn("w-5 h-5 animate-spin", sub)} /> : <Plus className={cn("w-5 h-5", sub)} />}
+                    <span className={cn("text-[10px] font-semibold", sub)}>Add more</span>
+                  </button>
                 </div>
               )}
             </div>
           </SectionCard>
 
           {/* PRICING */}
-          <SectionCard id="pricing" title="Price & Stock" icon={DollarSign} error={!!errors.price}>
+          <SectionCard ctx={sectionCtx} id="pricing" title="Price & Stock" icon={DollarSign} error={!!errors.price}>
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -464,7 +617,7 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
           </SectionCard>
 
           {/* VARIANTS */}
-          <SectionCard id="variants" title="Product Variants" icon={Layers} error={!!errors.variants}>
+          <SectionCard ctx={sectionCtx} id="variants" title="Product Variants" icon={Layers} error={!!errors.variants}>
             <div className="space-y-3">
               <FieldError field="variants" />
               {form.variants.map((v, i) => (
@@ -509,7 +662,7 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
           </SectionCard>
 
           {/* SEO */}
-          <SectionCard id="seo" title="SEO Meta Tags" icon={Globe}>
+          <SectionCard ctx={sectionCtx} id="seo" title="SEO Meta Tags" icon={Globe}>
             <div className="space-y-3">
               <div>
                 <label className={labelCls}>Meta Title</label>
@@ -532,7 +685,7 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
           </SectionCard>
 
           {/* SHIPPING */}
-          <SectionCard id="shipping" title="Shipping Configuration" icon={Truck}>
+          <SectionCard ctx={sectionCtx} id="shipping" title="Shipping Configuration" icon={Truck}>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className={cn("text-sm font-semibold", txt)}>Free Shipping</label>
@@ -550,7 +703,7 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
           </SectionCard>
 
           {/* FLASH DEAL */}
-          <SectionCard id="flash" title="Flash Deal" icon={Zap}>
+          <SectionCard ctx={sectionCtx} id="flash" title="Flash Deal" icon={Zap}>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -599,7 +752,7 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
         {/* RIGHT COLUMN - SIDEBAR */}
         <div className="space-y-4">
           {/* VISIBILITY */}
-          <SectionCard id="visibility" title="Visibility & Status" icon={Eye}>
+          <SectionCard ctx={sectionCtx} id="visibility" title="Visibility & Status" icon={Eye}>
             <div className="space-y-3">
               <div>
                 <label className={labelCls}>Status</label>
@@ -702,6 +855,34 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
           {toast.message}
         </div>
       )}
+    </div>
+  );
+}
+
+type SectionCtx = {
+  cardCls: string;
+  hover: string;
+  txt: string;
+  sub: string;
+  brd: string;
+  sections: Record<string, boolean>;
+  toggleSection: (key: string) => void;
+};
+
+function SectionCardBase({ ctx, id, title, icon: Icon, children, error: hasError }: { ctx: SectionCtx; id: string; title: string; icon: typeof Package; children: React.ReactNode; error?: boolean }) {
+  const { cardCls, hover, txt, sub, brd, sections, toggleSection } = ctx;
+  return (
+    <div className={cn(cardCls, hasError && "border-red-500/50")}>
+      <button onClick={() => toggleSection(id)} className={cn("w-full flex items-center justify-between p-4 transition-colors", hover)}>
+        <div className="flex items-center gap-2.5">
+          <div className={cn("w-8 h-8 rounded-[9px] flex items-center justify-center", hasError ? "bg-red-500/10" : "bg-[#2563eb]/10")}>
+            <Icon className={cn("w-4 h-4", hasError ? "text-red-500" : "text-[#2563eb]")} />
+          </div>
+          <span className={cn("text-sm font-bold", txt)}>{title}</span>
+        </div>
+        {sections[id] ? <ChevronUp className={cn("w-4 h-4", sub)} /> : <ChevronDown className={cn("w-4 h-4", sub)} />}
+      </button>
+      {sections[id] && <div className={cn("px-4 pb-4 border-t pt-4", brd)}>{children}</div>}
     </div>
   );
 }

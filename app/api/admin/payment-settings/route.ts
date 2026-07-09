@@ -225,9 +225,12 @@ export async function POST(request: NextRequest) {
     if (action === "add_gateway") {
       const { gateway, display_name, description } = body;
       if (!gateway || !display_name) return Response.json({ error: "gateway code and display_name required" }, { status: 400 });
-      const code = String(gateway).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 40);
+      const code = String(gateway).toLowerCase().trim().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+      if (!code) return Response.json({ error: "Gateway code must contain letters or numbers" }, { status: 400 });
+      const { data: existing } = await supabase.from("payment_settings").select("gateway").eq("gateway", code).maybeSingle();
+      if (existing) return Response.json({ error: `Gateway "${code}" already exists — it may just be disabled. Look for it in the list.` }, { status: 409 });
       const { data, error } = await supabase.from("payment_settings").insert({
-        gateway: code, display_name, description: description || null,
+        gateway: code, display_name: String(display_name).trim(), description: description?.trim() || null,
         enabled: false, is_custom: true, sort: 99,
       }).select().single();
       if (error) return Response.json({ error: error.message }, { status: 400 });
@@ -372,6 +375,24 @@ export async function PUT(request: NextRequest) {
     if (target === "gateway") {
       const { gateway } = body;
       if (!gateway) return Response.json({ error: "gateway required" }, { status: 400 });
+
+      // Creation path via PUT — fallback for hosts whose security layer blocks
+      // some POST bodies (returns HTML error pages instead of reaching Next).
+      if (body.create === true) {
+        const code = String(gateway).toLowerCase().trim().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+        if (!code) return Response.json({ error: "Gateway code must contain letters or numbers" }, { status: 400 });
+        if (!body.display_name?.trim()) return Response.json({ error: "display_name required" }, { status: 400 });
+        const { data: existing } = await supabase.from("payment_settings").select("gateway").eq("gateway", code).maybeSingle();
+        if (existing) return Response.json({ error: `Gateway "${code}" already exists` }, { status: 409 });
+        const { data, error } = await supabase.from("payment_settings").insert({
+          gateway: code, display_name: body.display_name.trim(),
+          description: body.description?.trim() || null,
+          enabled: false, is_custom: true, sort: 99,
+        }).select().single();
+        if (error) return Response.json({ error: error.message }, { status: 400 });
+        await audit(supabase, auth, "gateway.created", code, null, { display_name: body.display_name.trim() });
+        return Response.json(data, { status: 201 });
+      }
       const fields = ["enabled", "sandbox_mode", "merchant_id", "timeout_seconds", "retry_attempts",
        "display_name", "description", "priority", "countries", "currencies",
        "fee_percent", "fee_fixed", "logo_url", "notes",

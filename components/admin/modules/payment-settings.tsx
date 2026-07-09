@@ -168,12 +168,24 @@ export function AdminPaymentSettings({ dark }: Props) {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // Defensive parsing: shared hosts sometimes intercept requests and return
+  // HTML error pages — res.json() on those throws Safari's cryptic
+  // "The string did not match the expected pattern". Read text first and
+  // surface a real error message instead.
   const api = async (method, body) => {
     const res = await fetch("/api/admin/payment-settings", {
-      method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      method, headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
     });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error || "Request failed");
+    const text = await res.text();
+    let d;
+    try { d = text ? JSON.parse(text) : {}; } catch {
+      const err = new Error(`Server returned a non-JSON response (HTTP ${res.status}). The request may have been blocked by the hosting security layer.`);
+      err.nonJson = true;
+      err.status = res.status;
+      throw err;
+    }
+    if (!res.ok) throw new Error(d.error || `Request failed (HTTP ${res.status})`);
     return d;
   };
 
@@ -1036,9 +1048,21 @@ export function AdminPaymentSettings({ dark }: Props) {
           <div><label className={labelCls}>Display name</label><input value={newGw.display_name} onChange={e => setNewGw(g => ({ ...g, display_name: e.target.value }))} placeholder="Western Union" className={inpCls} /></div>
           <div><label className={labelCls}>Description</label><input value={newGw.description} onChange={e => setNewGw(g => ({ ...g, description: e.target.value }))} placeholder="Shown to customers at checkout" className={inpCls} /></div>
           <button onClick={async () => {
-            if (!newGw.gateway.trim() || !newGw.display_name.trim()) { showToast("Code and name required", "error"); return; }
-            try { await api("POST", { action: "add_gateway", ...newGw }); setShowAddGateway(false); setNewGw({ gateway: "", display_name: "", description: "" }); load(); showToast("Gateway added"); }
-            catch (e) { showToast(e.message, "error"); }
+            const code = newGw.gateway.trim().toLowerCase();
+            if (!code || !newGw.display_name.trim()) { showToast("Code and name required", "error"); return; }
+            if (!/^[a-z0-9_ -]+$/.test(code)) { showToast("Code: letters, numbers and underscores only (e.g. western_union)", "error"); return; }
+            if (settings.some(s => s.gateway === code.replace(/[^a-z0-9_]/g, "_"))) { showToast(`"${code}" already exists in the list (it may be disabled)`, "error"); return; }
+            const done = () => { setShowAddGateway(false); setNewGw({ gateway: "", display_name: "", description: "" }); load(); showToast("Gateway added"); };
+            try {
+              await api("POST", { action: "add_gateway", ...newGw, gateway: code });
+              done();
+            } catch (e) {
+              if (e.nonJson) {
+                // Hosting layer blocked the POST — retry through the PUT creation path
+                try { await api("PUT", { target: "gateway", create: true, ...newGw, gateway: code }); done(); }
+                catch (e2) { showToast(e2.message, "error"); }
+              } else showToast(e.message, "error");
+            }
           }} className="w-full h-10 rounded-[11px] bg-[#2563eb] text-white text-sm font-bold hover:bg-[#1d4ed8] flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Create Gateway</button>
         </div>
       </Drawer>

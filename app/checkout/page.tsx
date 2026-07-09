@@ -22,7 +22,7 @@ const shippingOptions = [
   { id: "overnight", label: "Overnight Shipping", price: 39.99, freeAbove: null, time: "1 business day" },
 ];
 
-type PaymentMethodId = "stripe" | "moncash" | "natcash" | "cod" | "bank_transfer";
+type PaymentMethodId = string;
 
 const paymentMethods: { id: PaymentMethodId; label: string; description: string; icon: typeof CreditCard; processing: string }[] = [
   { id: "stripe", label: "Credit / Debit Card", description: "Visa, Mastercard, Amex — powered by Stripe", icon: CreditCard, processing: "Instant" },
@@ -203,6 +203,8 @@ export default function CheckoutPage() {
 
   // Payment methods enabled by admin (payment_settings table). null = loading, fall back to all.
   const [enabledGateways, setEnabledGateways] = useState<Set<string> | null>(null);
+  // Wizard-created manual gateways appear automatically with a generic flow
+  const [customMethods, setCustomMethods] = useState<{ id: string; label: string; description: string }[]>([]);
   useEffect(() => {
     fetch("/api/payments/methods")
       .then((r) => (r.ok ? r.json() : null))
@@ -210,6 +212,14 @@ export default function CheckoutPage() {
         if (d?.methods?.length) {
           const enabled = new Set<string>(d.methods.map((m: { gateway: string }) => m.gateway));
           setEnabledGateways(enabled);
+          const known = new Set(paymentMethods.map((pm) => pm.id));
+          setCustomMethods(
+            d.methods
+              .filter((m: { gateway: string }) => !known.has(m.gateway))
+              .map((m: { gateway: string; display_name: string; description: string }) => ({
+                id: m.gateway, label: m.display_name, description: m.description || "Manual payment",
+              }))
+          );
           // If current selection is disabled, switch to first enabled method
           if (!enabled.has("stripe")) {
             const first = paymentMethods.find((pm) => enabled.has(pm.id));
@@ -219,9 +229,29 @@ export default function CheckoutPage() {
       })
       .catch(() => {});
   }, []);
-  const visiblePaymentMethods = enabledGateways
-    ? paymentMethods.filter((pm) => enabledGateways.has(pm.id))
-    : paymentMethods;
+  const visiblePaymentMethods = [
+    ...(enabledGateways ? paymentMethods.filter((pm) => enabledGateways.has(pm.id)) : paymentMethods),
+    ...customMethods.map((m) => ({ id: m.id, label: m.label, description: m.description, icon: Banknote, processing: "Manual confirmation" })),
+  ];
+  const isCustomMethod = customMethods.some((m) => m.id === paymentMethod);
+
+  const handleCustomManual = async () => {
+    setProcessing(true);
+    setIntentError(null);
+    const order = await createOrder();
+    if (!order) { setProcessing(false); return; }
+    try {
+      const res = await fetch(`/api/payments/${paymentMethod}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.orderId, amount: grandTotal, reference: bankRef || undefined }),
+      });
+      const data = await res.json();
+      if (data.paymentId) handlePaymentSuccess(order.orderNumber);
+      else setIntentError(data.error ?? "Failed");
+    } catch { setIntentError("Network error"); }
+    setProcessing(false);
+  };
 
   const validateAddress = (): boolean => {
     const errors: Record<string, string> = {};
@@ -591,6 +621,35 @@ export default function CheckoutPage() {
                     <Button variant="outline" size="lg" onClick={() => setStep(3)} disabled={processing}>Back</Button>
                     <Button size="lg" className="flex-1" onClick={handleCodOrBank} disabled={processing}>
                       {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Confirming...</> : "Confirm Order"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {isCustomMethod && (
+                <div className="space-y-5">
+                  <h2 className="text-[18px] font-extrabold text-[#16181d]">{customMethods.find((m) => m.id === paymentMethod)?.label}</h2>
+                  <div className="border border-[#eef0f3] rounded-[14px] p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Banknote className="w-6 h-6 text-[#16a34a]" />
+                      <p className="text-[14px] font-semibold text-[#16181d]">{customMethods.find((m) => m.id === paymentMethod)?.description}</p>
+                    </div>
+                    <p className="text-[13px] text-[#5b6472]">
+                      Your order of <span className="font-bold text-[#16181d]">${grandTotal.toFixed(2)}</span> will be placed and marked pending. Our team will confirm your payment and process the order.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-[12px] font-semibold text-[#5b6472] block mb-1.5">Payment reference (optional)</label>
+                    <input type="text" value={bankRef} onChange={(e) => setBankRef(e.target.value)} placeholder="Transaction or receipt number" className={inputCls} />
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-[#eff6ff] rounded-[10px]">
+                    <ShieldCheck className="w-4 h-4 text-[#2563eb]" />
+                    <span className="text-[12px] text-[#1d4ed8] font-semibold">Your order is confirmed only after payment verification</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button variant="outline" size="lg" onClick={() => setStep(3)} disabled={processing}>Back</Button>
+                    <Button size="lg" className="flex-1" onClick={handleCustomManual} disabled={processing}>
+                      {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Confirming...</> : "Place Order"}
                     </Button>
                   </div>
                 </div>

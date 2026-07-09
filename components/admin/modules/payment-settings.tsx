@@ -1041,31 +1041,19 @@ export function AdminPaymentSettings({ dark }: Props) {
         })()}
       </Drawer>
 
-      {/* ADD GATEWAY DRAWER */}
-      <Drawer open={showAddGateway} onClose={() => setShowAddGateway(false)} title="Add Payment Gateway" dark={dark} width="md">
-        <div className="p-4 space-y-3">
-          <div><label className={labelCls}>Gateway code</label><input value={newGw.gateway} onChange={e => setNewGw(g => ({ ...g, gateway: e.target.value }))} placeholder="western_union" className={inpCls} /></div>
-          <div><label className={labelCls}>Display name</label><input value={newGw.display_name} onChange={e => setNewGw(g => ({ ...g, display_name: e.target.value }))} placeholder="Western Union" className={inpCls} /></div>
-          <div><label className={labelCls}>Description</label><input value={newGw.description} onChange={e => setNewGw(g => ({ ...g, description: e.target.value }))} placeholder="Shown to customers at checkout" className={inpCls} /></div>
-          <button onClick={async () => {
-            const code = newGw.gateway.trim().toLowerCase();
-            if (!code || !newGw.display_name.trim()) { showToast("Code and name required", "error"); return; }
-            if (!/^[a-z0-9_ -]+$/.test(code)) { showToast("Code: letters, numbers and underscores only (e.g. western_union)", "error"); return; }
-            if (settings.some(s => s.gateway === code.replace(/[^a-z0-9_]/g, "_"))) { showToast(`"${code}" already exists in the list (it may be disabled)`, "error"); return; }
-            const done = () => { setShowAddGateway(false); setNewGw({ gateway: "", display_name: "", description: "" }); load(); showToast("Gateway added"); };
-            try {
-              await api("POST", { action: "add_gateway", ...newGw, gateway: code });
-              done();
-            } catch (e) {
-              if (e.nonJson) {
-                // Hosting layer blocked the POST — retry through the PUT creation path
-                try { await api("PUT", { target: "gateway", create: true, ...newGw, gateway: code }); done(); }
-                catch (e2) { showToast(e2.message, "error"); }
-              } else showToast(e.message, "error");
-            }
-          }} className="w-full h-10 rounded-[11px] bg-[#2563eb] text-white text-sm font-bold hover:bg-[#1d4ed8] flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Create Gateway</button>
-        </div>
-      </Drawer>
+      {/* ================= GATEWAY WIZARD ================= */}
+      <GatewayWizard
+        open={showAddGateway}
+        onClose={() => setShowAddGateway(false)}
+        dark={dark}
+        api={api}
+        settings={settings}
+        envStatus={envStatus}
+        webhookUrls={webhookUrls}
+        reload={load}
+        showToast={showToast}
+        styles={{ p, brd, txt, sub, inp, hover, inpCls, labelCls, btnGhost }}
+      />
 
       {/* ADD CURRENCY DRAWER */}
       <Drawer open={showAddCurrency} onClose={() => setShowAddCurrency(false)} title="Add Currency" dark={dark} width="md">
@@ -1090,5 +1078,359 @@ export function AdminPaymentSettings({ dark }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ================= PAYMENT GATEWAY WIZARD ================= */
+
+function GatewayWizard({ open, onClose, dark, api, settings, envStatus, webhookUrls, reload, showToast, styles }) {
+  const { brd, txt, sub, hover, inpCls, labelCls, btnGhost } = styles;
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState({ gateway: "", display_name: "", description: "", integration_type: "manual" });
+  const [created, setCreated] = useState(null); // gateway code once created
+  const [creating, setCreating] = useState(false);
+  const [scaffold, setScaffold] = useState(null);
+  const [testResult, setTestResult] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const isApi = data.integration_type === "api";
+  const STEPS = isApi
+    ? ["Basics", "Type", "Create", "Integration Files", "Environment", "Webhook", "Test", "Activate"]
+    : ["Basics", "Type", "Create", "Activate"];
+
+  const reset = () => {
+    setStep(0);
+    setData({ gateway: "", display_name: "", description: "", integration_type: "manual" });
+    setCreated(null); setScaffold(null); setTestResult(null);
+  };
+  const close = () => { reset(); onClose(); };
+
+  const code = data.gateway.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+  const CODE = code.toUpperCase();
+  const createdGw = settings.find(s => s.gateway === created);
+  const env = created ? envStatus[created] : null;
+  const envOk = !env || Object.entries(env).every(([k, v]) => k === "mode" || v === true);
+
+  const validateBasics = () => {
+    if (!code) { showToast("Gateway code is required (letters, numbers, underscores)", "error"); return false; }
+    if (!data.display_name.trim()) { showToast("Display name is required", "error"); return false; }
+    if (settings.some(s => s.gateway === code)) { showToast(`"${code}" already exists — it may just be disabled in the list`, "error"); return false; }
+    return true;
+  };
+
+  const createGateway = async () => {
+    setCreating(true);
+    try {
+      try {
+        await api("POST", { action: "add_gateway", gateway: code, display_name: data.display_name, description: data.description, integration_type: data.integration_type });
+      } catch (e) {
+        if (e.nonJson) await api("PUT", { target: "gateway", create: true, gateway: code, display_name: data.display_name, description: data.description, integration_type: data.integration_type });
+        else throw e;
+      }
+      setCreated(code);
+      await reload();
+      if (isApi) {
+        try {
+          const res = await fetch(`/api/admin/payment-settings?section=scaffold&gateway=${code}`);
+          if (res.ok) setScaffold(await res.json());
+        } catch { /* silent */ }
+      }
+      setStep(3);
+      showToast("Gateway created");
+    } catch (e) { showToast(e.message, "error"); } finally { setCreating(false); }
+  };
+
+  const recheckEnv = async () => {
+    setChecking(true);
+    await reload();
+    setChecking(false);
+  };
+
+  const runTest = async () => {
+    setTestResult({ loading: true });
+    try {
+      const d = await api("POST", { action: "test_connection", gateway: created });
+      setTestResult({ ok: d.ok, message: d.message });
+    } catch (e) { setTestResult({ ok: false, message: e.message }); }
+  };
+
+  const activate = async () => {
+    try {
+      await api("PUT", { target: "gateway", gateway: created, enabled: true });
+      await reload();
+      showToast(`${data.display_name} is now live at checkout`);
+      close();
+    } catch (e) { showToast(e.message, "error"); }
+  };
+
+  const download = (filename, content) => {
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const StepDots = () => (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {STEPS.map((label, i) => (
+        <div key={label} className="flex items-center gap-1.5">
+          <div className={cn("flex items-center gap-1.5 px-2 py-1 rounded-full",
+            i === step ? "bg-[#2563eb]" : i < step ? "bg-emerald-500/10" : dark ? "bg-[#1d242e]" : "bg-[#f0f2f5]")}>
+            {i < step
+              ? <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+              : <span className={cn("w-3.5 h-3.5 rounded-full text-[8px] font-extrabold flex items-center justify-center", i === step ? "bg-white/20 text-white" : sub)}>{i + 1}</span>}
+            <span className={cn("text-[9px] font-bold uppercase tracking-wide", i === step ? "text-white" : i < step ? "text-emerald-600" : sub)}>{label}</span>
+          </div>
+          {i < STEPS.length - 1 && <div className={cn("w-2 h-px", dark ? "bg-[#252c36]" : "bg-[#e4e7eb]")} />}
+        </div>
+      ))}
+    </div>
+  );
+
+  const NavButtons = ({ onNext, nextLabel = "Continue", nextDisabled, showBack = true, loading }) => (
+    <div className="flex items-center gap-2 pt-2">
+      {showBack && step > 0 && !created && (
+        <button onClick={() => setStep(s => s - 1)} className={btnGhost}>Back</button>
+      )}
+      {created && step > 3 && (
+        <button onClick={() => setStep(s => s - 1)} className={btnGhost}>Back</button>
+      )}
+      <button onClick={onNext} disabled={nextDisabled || loading}
+        className="h-10 px-5 rounded-[11px] bg-[#2563eb] text-white text-sm font-bold hover:bg-[#1d4ed8] disabled:opacity-50 flex items-center gap-2 ml-auto">
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} {nextLabel} <ArrowRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
+  const CodeBlock = ({ content, filename }) => (
+    <div className="relative group">
+      <pre className={cn("rounded-[12px] border p-3 text-[10px] font-mono overflow-x-auto whitespace-pre max-h-[260px] overflow-y-auto", brd, txt, dark ? "bg-[#0f1318]" : "bg-[#f8f9fb]")}>{content}</pre>
+      <div className="absolute top-2 right-2 flex gap-1">
+        <button onClick={() => navigator.clipboard?.writeText(content).then(() => showToast("Copied"))}
+          className={cn("h-7 px-2 rounded-[8px] border text-[10px] font-bold flex items-center gap-1", brd, txt, dark ? "bg-[#171c24]" : "bg-white")}>
+          <Copy className="w-3 h-3" /> Copy
+        </button>
+        <button onClick={() => download(filename.split("/").pop(), content)}
+          className={cn("h-7 px-2 rounded-[8px] border text-[10px] font-bold flex items-center gap-1", brd, txt, dark ? "bg-[#171c24]" : "bg-white")}>
+          <Download className="w-3 h-3" /> Download
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <Drawer open={open} onClose={close} title="Payment Gateway Wizard" dark={dark} width="2xl">
+      <div className="p-4 space-y-5">
+        <StepDots />
+
+        {/* STEP 0 — BASICS */}
+        {step === 0 && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>Identify the new payment method</p>
+            <div>
+              <label className={labelCls}>Gateway code (technical identifier)</label>
+              <input value={data.gateway} onChange={e => setData(d => ({ ...d, gateway: e.target.value }))} placeholder="western_union" className={inpCls} />
+              {code && <p className={cn("text-[10px] mt-1 font-mono", sub)}>Will be registered as: <b className={txt}>{code}</b></p>}
+            </div>
+            <div>
+              <label className={labelCls}>Display name (shown to customers)</label>
+              <input value={data.display_name} onChange={e => setData(d => ({ ...d, display_name: e.target.value }))} placeholder="Western Union" className={inpCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Description (shown at checkout)</label>
+              <input value={data.description} onChange={e => setData(d => ({ ...d, description: e.target.value }))} placeholder="Pay via Western Union transfer" className={inpCls} />
+            </div>
+            <NavButtons onNext={() => validateBasics() && setStep(1)} showBack={false} />
+          </div>
+        )}
+
+        {/* STEP 1 — TYPE */}
+        {step === 1 && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>How will payments be processed?</p>
+            {[
+              {
+                type: "manual", title: "Manual / Offline", icon: Banknote,
+                desc: "Bank deposit, money transfer agent, in-person payment... The customer places the order, you verify the payment yourself and confirm it in the Payments module.",
+                badge: "Works immediately — zero code",
+              },
+              {
+                type: "api", title: "API Provider", icon: Zap,
+                desc: "An online payment provider with its own API (like MonCash or Stripe). The customer is redirected to the provider and a signed webhook confirms the payment automatically.",
+                badge: "Guided integration — scaffold generated",
+              },
+            ].map(opt => (
+              <button key={opt.type} onClick={() => setData(d => ({ ...d, integration_type: opt.type }))}
+                className={cn("w-full rounded-[14px] border-2 p-4 text-left transition-colors flex gap-3",
+                  data.integration_type === opt.type ? "border-[#2563eb] bg-[#2563eb]/5" : cn(brd, hover))}>
+                <div className={cn("w-10 h-10 rounded-[11px] flex items-center justify-center shrink-0", data.integration_type === opt.type ? "bg-[#2563eb] text-white" : dark ? "bg-[#1d242e] text-[#8b95a3]" : "bg-[#f0f2f5] text-[#8a929c]")}>
+                  <opt.icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className={cn("text-sm font-extrabold", txt)}>{opt.title}</p>
+                    <span className={cn("px-2 py-0.5 rounded-full text-[9px] font-bold", opt.type === "manual" ? "bg-emerald-500/10 text-emerald-600" : "bg-violet-500/10 text-violet-600")}>{opt.badge}</span>
+                  </div>
+                  <p className={cn("text-xs mt-1 leading-relaxed", sub)}>{opt.desc}</p>
+                </div>
+              </button>
+            ))}
+            <NavButtons onNext={() => setStep(2)} />
+          </div>
+        )}
+
+        {/* STEP 2 — CREATE */}
+        {step === 2 && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>Review and create</p>
+            <div className={cn("rounded-[12px] border divide-y", brd, dark ? "divide-[#252c36]" : "divide-[#eef0f3]")}>
+              {[["Code", code], ["Name", data.display_name], ["Description", data.description || "—"],
+                ["Type", isApi ? "API Provider" : "Manual / Offline"],
+                ["Initial state", "Disabled — activated at the last step"]].map(([k, v]) => (
+                <div key={k} className="px-3 py-2.5 flex items-center justify-between gap-3">
+                  <span className={cn("text-[11px] font-bold uppercase tracking-wide", sub)}>{k}</span>
+                  <span className={cn("text-xs font-semibold text-right", txt)}>{v}</span>
+                </div>
+              ))}
+            </div>
+            {!isApi && (
+              <div className={cn("rounded-[10px] bg-emerald-500/10 p-3 text-xs text-emerald-700 leading-relaxed")}>
+                Manual gateways are handled by the built-in generic engine: they appear automatically at checkout, orders are recorded as <b>pending</b>, and you confirm each payment with the <b>Capture</b> action in the Payments module. No code, no credentials.
+              </div>
+            )}
+            <NavButtons onNext={createGateway} nextLabel="Create Gateway" loading={creating} />
+          </div>
+        )}
+
+        {/* STEP 3 (API) — INTEGRATION FILES / (MANUAL) — ACTIVATE */}
+        {step === 3 && !isApi && created && (
+          <div className="space-y-3">
+            <div className="rounded-[10px] bg-emerald-500/10 p-3 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <p className="text-xs font-bold text-emerald-700">{data.display_name} is ready — everything below already works.</p>
+            </div>
+            <div className={cn("rounded-[12px] border p-3 space-y-2", brd)}>
+              <p className={cn("text-xs font-bold", txt)}>What happens when a customer chooses {data.display_name}:</p>
+              {["It appears in the checkout payment list automatically",
+                "The order is placed and the payment recorded as pending",
+                `You verify the payment, then press Capture in the Payments module`,
+                "The order is confirmed and inventory updated"].map((s, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className={cn("w-5 h-5 rounded-full bg-[#2563eb]/10 text-[#2563eb] text-[10px] font-extrabold flex items-center justify-center shrink-0")}>{i + 1}</span>
+                  <p className={cn("text-xs pt-0.5", sub)}>{s}</p>
+                </div>
+              ))}
+            </div>
+            <button onClick={activate} className="w-full h-11 rounded-[11px] bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4" /> Activate {data.display_name} at checkout
+            </button>
+            <button onClick={close} className={cn("w-full h-9 text-xs font-bold", sub)}>Keep disabled for now — finish later from its card</button>
+          </div>
+        )}
+
+        {step === 3 && isApi && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>Integration files</p>
+            <p className={cn("text-xs leading-relaxed", sub)}>
+              The signed <b className={txt}>webhook endpoint already exists</b> (generic engine) — no file needed for it. One file must be added to the project so customers can be redirected to the provider: download it, adapt the provider API call to their documentation, place it at the path shown, rebuild and deploy.
+            </p>
+            {!scaffold ? <div className={cn("h-40 rounded-[12px] animate-pulse", dark ? "bg-[#1d242e]" : "bg-[#f0f2f5]")} /> : (
+              <>
+                {scaffold.files.map(f => (
+                  <div key={f.path}>
+                    <p className={cn("text-[10px] font-bold font-mono mb-1", txt)}>{f.path}</p>
+                    <CodeBlock content={f.content} filename={f.path} />
+                  </div>
+                ))}
+                <div className={cn("rounded-[12px] border p-3", brd)}>
+                  <p className={cn("text-[10px] font-bold uppercase tracking-wide mb-1", sub)}>Webhook — nothing to code</p>
+                  <pre className={cn("text-[10px] font-mono whitespace-pre-wrap leading-relaxed", sub)}>{scaffold.webhookNote}</pre>
+                </div>
+              </>
+            )}
+            <NavButtons onNext={() => setStep(4)} />
+          </div>
+        )}
+
+        {/* STEP 4 (API) — ENVIRONMENT */}
+        {step === 4 && isApi && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>Environment variables</p>
+            <p className={cn("text-xs leading-relaxed", sub)}>
+              Add these to the server environment (never in code, never in the database), then restart the app. The checks below re-run live.
+            </p>
+            <div className={cn("rounded-[12px] border p-3 space-y-2", brd)}>
+              {[["api_key", `${CODE}_API_KEY`], ["webhook_secret", `${CODE}_WEBHOOK_SECRET`]].map(([k, name]) => (
+                <div key={k} className="flex items-center gap-2">
+                  {env?.[k] ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-500" />}
+                  <code className={cn("text-xs font-mono", txt)}>{name}</code>
+                  <span className={cn("text-[10px] ml-auto", env?.[k] ? "text-emerald-500 font-bold" : sub)}>{env?.[k] ? "detected" : "not set"}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={recheckEnv} disabled={checking} className={cn(btnGhost, "disabled:opacity-50")}>
+              {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-check now
+            </button>
+            <NavButtons onNext={() => setStep(5)} nextLabel={envOk ? "Continue" : "Continue anyway"} />
+          </div>
+        )}
+
+        {/* STEP 5 (API) — WEBHOOK */}
+        {step === 5 && isApi && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>Register the webhook with the provider</p>
+            <p className={cn("text-xs leading-relaxed", sub)}>
+              In the provider's dashboard, register this callback URL. Every event they send is verified with HMAC-SHA256 using <code className="font-mono">{CODE}_WEBHOOK_SECRET</code> before any order is marked paid.
+            </p>
+            <button onClick={() => navigator.clipboard?.writeText(webhookUrls[created] || "").then(() => showToast("Copied"))}
+              className={cn("flex items-center gap-2 text-left rounded-[10px] border px-3 py-2.5 w-full", brd, hover)}>
+              <Webhook className={cn("w-4 h-4 shrink-0", sub)} />
+              <span className={cn("text-xs font-mono truncate flex-1", txt)}>{webhookUrls[created] || `.../api/webhooks/${created}`}</span>
+              <Copy className={cn("w-3.5 h-3.5 shrink-0", sub)} />
+            </button>
+            <NavButtons onNext={() => setStep(6)} />
+          </div>
+        )}
+
+        {/* STEP 6 (API) — TEST */}
+        {step === 6 && isApi && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>Test the configuration</p>
+            <button onClick={runTest} className="h-10 px-5 rounded-[11px] bg-[#2563eb] text-white text-sm font-bold hover:bg-[#1d4ed8] flex items-center gap-2">
+              {testResult?.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlugZap className="w-4 h-4" />} Run connection test
+            </button>
+            {testResult && !testResult.loading && (
+              <div className={cn("rounded-[10px] p-3 text-xs font-semibold", testResult.ok ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600")}>{testResult.message}</div>
+            )}
+            <p className={cn("text-[11px]", sub)}>Then run a full sandbox payment end-to-end and confirm the webhook appears in Payment Logs before going to production.</p>
+            <NavButtons onNext={() => setStep(7)} nextDisabled={false} nextLabel={testResult?.ok ? "Continue" : "Continue anyway"} />
+          </div>
+        )}
+
+        {/* STEP 7 (API) — ACTIVATE */}
+        {step === 7 && isApi && (
+          <div className="space-y-3">
+            <p className={cn("text-sm font-bold", txt)}>Go live</p>
+            <div className={cn("rounded-[12px] border divide-y", brd, dark ? "divide-[#252c36]" : "divide-[#eef0f3]")}>
+              {[["Gateway registered", true],
+                ["Integration file deployed", null],
+                ["Credentials detected", envOk && !!env],
+                ["Connection test passed", testResult?.ok === true]].map(([label, ok]) => (
+                <div key={label} className="px-3 py-2.5 flex items-center gap-2">
+                  {ok === true ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : ok === false ? <XCircle className="w-4 h-4 text-red-500" /> : <AlertTriangle className="w-4 h-4 text-amber-500" />}
+                  <span className={cn("text-xs font-semibold", txt)}>{label}</span>
+                  {ok === null && <span className={cn("text-[10px] ml-auto", sub)}>verify manually after deploy</span>}
+                </div>
+              ))}
+            </div>
+            <button onClick={activate} className="w-full h-11 rounded-[11px] bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4" /> Activate {data.display_name} at checkout
+            </button>
+            <button onClick={close} className={cn("w-full h-9 text-xs font-bold", sub)}>Keep disabled for now — finish later from its card</button>
+          </div>
+        )}
+      </div>
+    </Drawer>
   );
 }

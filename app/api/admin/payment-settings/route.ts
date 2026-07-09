@@ -69,6 +69,22 @@ export async function GET(request: NextRequest) {
     const config = {};
     (cfg.data || []).forEach(r => { config[r.key] = r.value; });
 
+    // Today's live stats per gateway
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const { data: todayPayments } = await supabase
+      .from("payments")
+      .select("gateway, amount, status")
+      .gte("created_at", todayStart.toISOString());
+    const gatewayStats = {};
+    (todayPayments || []).forEach(r => {
+      if (!gatewayStats[r.gateway]) gatewayStats[r.gateway] = { transactions: 0, volume: 0, paid: 0 };
+      gatewayStats[r.gateway].transactions++;
+      if (r.status === "paid") {
+        gatewayStats[r.gateway].paid++;
+        gatewayStats[r.gateway].volume += Number(r.amount) || 0;
+      }
+    });
+
     const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com";
     return Response.json({
       settings: gw.data || [],
@@ -76,6 +92,7 @@ export async function GET(request: NextRequest) {
       config,
       taxRules: tax.data || [],
       envStatus: envStatusFor(),
+      gatewayStats,
       webhookUrls: {
         moncash: `${base}/api/webhooks/moncash`,
         natcash: `${base}/api/webhooks/natcash`,
@@ -168,12 +185,56 @@ export async function POST(request: NextRequest) {
       return Response.json({ success: true, imported: count });
     }
 
+    if (action === "sync_rates") {
+      // Fetch live exchange rates for the base currency and update auto-update currencies
+      const { data: baseCur } = await supabase.from("payment_currencies").select("code").eq("is_base", true).single();
+      const baseCode = baseCur?.code || "USD";
+      try {
+        const res = await fetch(`https://open.er-api.com/v6/latest/${baseCode}`, { signal: AbortSignal.timeout(10000) });
+        const data = await res.json();
+        if (!res.ok || data.result !== "success" || !data.rates) {
+          return Response.json({ ok: false, message: "Exchange rate provider returned an error" }, { status: 502 });
+        }
+        const { data: currencies } = await supabase.from("payment_currencies").select("code, is_base");
+        const now = new Date().toISOString();
+        let updated = 0;
+        for (const c of currencies || []) {
+          if (c.is_base) continue;
+          const rate = data.rates[c.code];
+          if (rate) {
+            await supabase.from("payment_currencies").update({ rate, last_synced_at: now, updated_at: now }).eq("code", c.code);
+            updated++;
+          }
+        }
+        return Response.json({ ok: true, updated, provider: "open.er-api.com", base: baseCode });
+      } catch (e) {
+        return Response.json({ ok: false, message: `Rate provider unreachable: ${e.message}` }, { status: 502 });
+      }
+    }
+
+    if (action === "add_currency") {
+      const { code, name, symbol } = body;
+      if (!code || !name || !symbol) return Response.json({ error: "code, name and symbol required" }, { status: 400 });
+      const { data, error } = await supabase.from("payment_currencies").insert({
+        code: String(code).toUpperCase().slice(0, 5), name, symbol,
+        enabled: false, rate: Number(body.rate) || 1,
+        symbol_position: body.symbol_position || "before",
+        decimals: body.decimals ?? 2,
+      }).select().single();
+      if (error) return Response.json({ error: error.message }, { status: 400 });
+      return Response.json(data, { status: 201 });
+    }
+
     if (action === "add_tax_rule") {
       const { country, region, tax_type, rate, applies_to_shipping } = body;
       if (!country || rate === undefined) return Response.json({ error: "country and rate required" }, { status: 400 });
       const { data, error } = await supabase.from("payment_tax_rules").insert({
         country, region: region || null, tax_type: tax_type || "sales_tax",
         rate: Number(rate) || 0, applies_to_shipping: !!applies_to_shipping,
+        state: body.state || null, zip: body.zip || null,
+        tax_class: body.tax_class || "standard",
+        priority: parseInt(body.priority) || 0,
+        compound: !!body.compound, inclusive: !!body.inclusive,
       }).select().single();
       if (error) return Response.json({ error: error.message }, { status: 400 });
       return Response.json(data, { status: 201 });
@@ -202,7 +263,8 @@ export async function PUT(request: NextRequest) {
       const patch = { updated_at: now };
       ["enabled", "sandbox_mode", "merchant_id", "timeout_seconds", "retry_attempts",
        "display_name", "description", "priority", "countries", "currencies",
-       "fee_percent", "fee_fixed", "logo_url", "notes"].forEach(k => {
+       "fee_percent", "fee_fixed", "logo_url", "notes",
+       "api_version", "min_amount", "max_amount", "webhook_retry"].forEach(k => {
         if (body[k] !== undefined) patch[k] = body[k];
       });
       const { error } = await supabase.from("payment_settings").update(patch).eq("gateway", gateway);
@@ -217,8 +279,12 @@ export async function PUT(request: NextRequest) {
         // Only one base currency
         await supabase.from("payment_currencies").update({ is_base: false }).neq("code", code);
       }
+      if (body.is_default === true) {
+        await supabase.from("payment_currencies").update({ is_default: false }).neq("code", code);
+      }
       const patch = { updated_at: now };
-      ["enabled", "is_base", "rate", "rate_source", "symbol", "name"].forEach(k => {
+      ["enabled", "is_base", "is_default", "rate", "rate_source", "symbol", "name",
+       "symbol_position", "decimals", "auto_update", "api_source"].forEach(k => {
         if (body[k] !== undefined) patch[k] = body[k];
       });
       const { error } = await supabase.from("payment_currencies").update(patch).eq("code", code);
@@ -229,7 +295,10 @@ export async function PUT(request: NextRequest) {
     if (target === "config") {
       const { key, value } = body;
       if (!key || value === undefined) return Response.json({ error: "key and value required" }, { status: 400 });
-      if (!["checkout", "fraud", "notifications"].includes(key)) return Response.json({ error: "Invalid config key" }, { status: 400 });
+      const allowedKeys = ["checkout", "fraud", "notifications",
+        "checkout_customer", "checkout_payment", "checkout_shipping", "checkout_invoice", "checkout_order",
+        "notification_channels", "notification_recipients"];
+      if (!allowedKeys.includes(key)) return Response.json({ error: "Invalid config key" }, { status: 400 });
       const { error } = await supabase.from("payment_config").upsert({ key, value, updated_at: now }, { onConflict: "key" });
       if (error) return Response.json({ error: error.message }, { status: 400 });
       return Response.json({ success: true });
@@ -239,7 +308,8 @@ export async function PUT(request: NextRequest) {
       const { id } = body;
       if (!id) return Response.json({ error: "id required" }, { status: 400 });
       const patch = {};
-      ["country", "region", "tax_type", "rate", "applies_to_shipping", "enabled"].forEach(k => {
+      ["country", "region", "tax_type", "rate", "applies_to_shipping", "enabled",
+       "state", "zip", "tax_class", "priority", "compound", "inclusive"].forEach(k => {
         if (body[k] !== undefined) patch[k] = body[k];
       });
       const { error } = await supabase.from("payment_tax_rules").update(patch).eq("id", id);
@@ -263,6 +333,13 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json();
     if (body.target === "tax_rule" && body.id) {
       const { error } = await supabase.from("payment_tax_rules").delete().eq("id", body.id);
+      if (error) return Response.json({ error: error.message }, { status: 400 });
+      return Response.json({ success: true });
+    }
+    if (body.target === "currency" && body.code) {
+      const { data: cur } = await supabase.from("payment_currencies").select("is_base, is_default").eq("code", body.code).single();
+      if (cur?.is_base || cur?.is_default) return Response.json({ error: "Base/default currency cannot be deleted" }, { status: 400 });
+      const { error } = await supabase.from("payment_currencies").delete().eq("code", body.code);
       if (error) return Response.json({ error: error.message }, { status: 400 });
       return Response.json({ success: true });
     }

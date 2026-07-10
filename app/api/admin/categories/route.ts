@@ -485,7 +485,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, slug: rawSlug, parent_id, image_url, is_active } = body;
+    const {
+      name, slug: rawSlug, parent_id, image_url, is_active,
+      category_type, sort_order, banner_url, icon_url, cover_url,
+      meta_title, meta_description, filter_attributes,
+      is_featured, show_in_nav, show_on_homepage,
+    } = body;
 
     if (!name) {
       return Response.json({ error: "Name is required" }, { status: 400 });
@@ -522,9 +527,20 @@ export async function POST(request: NextRequest) {
       name,
       slug,
       is_active: is_active ?? true,
+      category_type: category_type === "digital" ? "digital" : "physical",
+      sort_order: Number.isFinite(Number(sort_order)) ? parseInt(sort_order) : 0,
+      meta_title: meta_title || null,
+      meta_description: meta_description || null,
+      filter_attributes: Array.isArray(filter_attributes) ? filter_attributes : [],
+      is_featured: !!is_featured,
+      show_in_nav: show_in_nav !== false,
+      show_on_homepage: !!show_on_homepage,
     };
     if (parent_id) insertData.parent_id = parent_id;
     if (image_url) insertData.image_url = image_url;
+    if (banner_url) insertData.banner_url = banner_url;
+    if (icon_url) insertData.icon_url = icon_url;
+    if (cover_url) insertData.cover_url = cover_url;
 
     const { data: created, error } = await supabase
       .from("categories")

@@ -9,7 +9,8 @@ import {
   FolderOpen, FolderTree, CheckCircle2, EyeOff, Star, TrendingUp,
   ImageIcon, Globe, BarChart3, ArrowUpDown, Layers, DollarSign,
   Loader2, Package, SlidersHorizontal, GripVertical, LayoutGrid, List,
-  Hash, Tag, AlertTriangle, XCircle
+  Hash, Tag, AlertTriangle, XCircle,
+  Zap, Filter, Menu, Home, Upload
 } from "lucide-react";
 import type { Category, Product, ProductVariant } from "@/types";
 
@@ -54,6 +55,20 @@ const defaultKpis: CategoryKpis = {
   rootCategories: 0, subcategories: 0, categoriesWithoutProducts: 0,
   categoriesWithoutImage: 0, highestRevenueCategory: null, mostProductsCategory: null,
 };
+
+const FILTER_ATTRIBUTES = ["Brand", "Color", "Size", "Material", "Storage", "RAM", "Gender", "Capacity", "Style"];
+
+const emptyForm = {
+  name: "", slug: "", parent_id: "", category_type: "physical", sort_order: "0",
+  is_active: true, banner_url: "", icon_url: "", cover_url: "",
+  meta_title: "", meta_description: "", filter_attributes: [] as string[],
+  is_featured: false, show_in_nav: true, show_on_homepage: false,
+};
+type CategoryForm = typeof emptyForm;
+
+function slugifyClient(s: string) {
+  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
 
 export function AdminCategories({ dark }: Props) {
   const p = dark ? "bg-[#171c24]" : "bg-white";
@@ -100,12 +115,10 @@ export function AdminCategories({ dark }: Props) {
   // Form
   const [formOpen, setFormOpen] = useState(false);
   const [editCategory, setEditCategory] = useState<Category | null>(null);
-  const [formName, setFormName] = useState("");
-  const [formSlug, setFormSlug] = useState("");
-  const [formParentId, setFormParentId] = useState("");
-  const [formImageUrl, setFormImageUrl] = useState("");
-  const [formIsActive, setFormIsActive] = useState(true);
+  const [form, setForm] = useState<CategoryForm>({ ...emptyForm });
   const [formSaving, setFormSaving] = useState(false);
+  const [slugEdited, setSlugEdited] = useState(false);
+  const setField = <K extends keyof CategoryForm>(k: K, v: CategoryForm[K]) => setForm(f => ({ ...f, [k]: v }));
 
   // Tree expand
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -195,49 +208,85 @@ export function AdminCategories({ dark }: Props) {
   // ──── FORM ────
   const openCreate = (parentId?: string) => {
     setEditCategory(null);
-    setFormName(""); setFormSlug(""); setFormParentId(parentId || ""); setFormImageUrl(""); setFormIsActive(true);
+    setSlugEdited(false);
+    setForm({ ...emptyForm, parent_id: parentId || "" });
     setFormOpen(true);
   };
 
   const openEdit = (cat: Category) => {
     setEditCategory(cat);
-    setFormName(cat.name);
-    setFormSlug(cat.slug);
-    setFormParentId(cat.parent_id || "");
-    setFormImageUrl(cat.image_url || "");
-    setFormIsActive(cat.is_active);
+    setSlugEdited(true);
+    const c = cat as Record<string, unknown>;
+    setForm({
+      name: cat.name, slug: cat.slug, parent_id: cat.parent_id || "",
+      category_type: (c.category_type as string) || "physical",
+      sort_order: String((c.sort_order as number) ?? 0),
+      is_active: cat.is_active,
+      banner_url: (c.banner_url as string) || cat.image_url || "",
+      icon_url: (c.icon_url as string) || "",
+      cover_url: (c.cover_url as string) || "",
+      meta_title: (c.meta_title as string) || "",
+      meta_description: (c.meta_description as string) || "",
+      filter_attributes: Array.isArray(c.filter_attributes) ? (c.filter_attributes as string[]) : [],
+      is_featured: !!c.is_featured,
+      show_in_nav: c.show_in_nav !== false,
+      show_on_homepage: !!c.show_on_homepage,
+    });
     setFormOpen(true);
   };
 
   const handleSave = async () => {
-    if (!formName) return;
+    if (!form.name.trim()) { showToast("Category name is required", "error"); return; }
     setFormSaving(true);
     try {
-      const slug = formSlug || formName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const slug = slugifyClient(form.slug || form.name);
+      // image_url (used for list thumbnails) mirrors icon → banner → cover for backward compat
+      const image_url = form.icon_url || form.banner_url || form.cover_url || null;
       const payload = {
-        name: formName, slug,
-        parent_id: formParentId || null,
-        image_url: formImageUrl || null,
-        is_active: formIsActive,
+        name: form.name.trim(), slug,
+        parent_id: form.parent_id || null,
+        category_type: form.category_type,
+        sort_order: parseInt(form.sort_order) || 0,
+        is_active: form.is_active,
+        image_url,
+        banner_url: form.banner_url || null,
+        icon_url: form.icon_url || null,
+        cover_url: form.cover_url || null,
+        meta_title: form.meta_title || null,
+        meta_description: form.meta_description || null,
+        filter_attributes: form.filter_attributes,
+        is_featured: form.is_featured,
+        show_in_nav: form.show_in_nav,
+        show_on_homepage: form.show_on_homepage,
       };
 
-      if (editCategory) {
-        const res = await fetch("/api/admin/categories", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: editCategory.id, ...payload }),
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Update failed"); }
-        showToast("Category updated");
-      } else {
-        const res = await fetch("/api/admin/categories", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Create failed"); }
-        showToast("Category created");
-      }
+      const viaApi = async () => {
+        const method = editCategory ? "PUT" : "POST";
+        const body = editCategory ? { id: editCategory.id, ...payload } : payload;
+        const res = await fetch("/api/admin/categories", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const text = await res.text();
+        let d: Record<string, unknown> = {};
+        try { d = text ? JSON.parse(text) : {}; } catch { const e = new Error("nonjson") as Error & { nonJson?: boolean }; e.nonJson = true; throw e; }
+        if (!res.ok) throw new Error((d.error as string) || "Save failed");
+      };
+
+      const viaSupabase = async () => {
+        const supabase = createClient();
+        if (editCategory) {
+          const { error } = await supabase.from("categories").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", editCategory.id);
+          if (error) throw new Error(error.message);
+        } else {
+          const { data: dup } = await supabase.from("categories").select("id").eq("slug", slug).maybeSingle();
+          const finalSlug = dup ? `${slug}-${Date.now().toString(36).slice(-4)}` : slug;
+          const { error } = await supabase.from("categories").insert({ ...payload, slug: finalSlug });
+          if (error) throw new Error(error.message);
+        }
+      };
+
+      try { await viaApi(); }
+      catch (e) { if ((e as { nonJson?: boolean }).nonJson) await viaSupabase(); else throw e; }
+
+      showToast(editCategory ? "Category updated" : "Category created");
       setFormOpen(false);
       fetchCategories(); fetchKpis(); fetchTree(); fetchAllCategories();
     } catch (e: unknown) {
@@ -657,49 +706,157 @@ export function AdminCategories({ dark }: Props) {
       {formOpen && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50 animate-in fade-in duration-200" onClick={() => setFormOpen(false)} />
-          <div className={cn("absolute top-0 right-0 h-full w-full max-w-lg shadow-2xl flex flex-col animate-in slide-in-from-right duration-200", dark ? "bg-[#171c24]" : "bg-white")}>
-            <div className={cn("flex items-center justify-between px-6 py-4 border-b shrink-0", brd)}>
-              <h2 className={cn("text-[18px] font-extrabold", txt)}>{editCategory ? "Edit Category" : "Add Category"}</h2>
+          <div className={cn("absolute top-0 right-0 h-full w-full max-w-2xl shadow-2xl flex flex-col animate-in slide-in-from-right duration-200", dark ? "bg-[#0f1318]" : "bg-[#f4f6f9]")}>
+            <div className={cn("flex items-center justify-between px-6 py-4 border-b shrink-0", brd, dark ? "bg-[#171c24]" : "bg-white")}>
+              <div>
+                <h2 className={cn("text-[18px] font-extrabold", txt)}>{editCategory ? "Edit Category" : "Add Category"}</h2>
+                <p className={cn("text-[11px]", sub)}>{editCategory ? "Update this category's details and display settings." : "Create a new category for your storefront."}</p>
+              </div>
               <button onClick={() => setFormOpen(false)} className={cn("h-8 w-8 rounded-full flex items-center justify-center", hover)}><X className="w-5 h-5" /></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-              <div>
-                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Category Name *</label>
-                <input value={formName} onChange={e => { setFormName(e.target.value); if (!editCategory) setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")); }} className={inpCls} placeholder="Sneakers" />
-              </div>
-              <div>
-                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Slug</label>
-                <input value={formSlug} onChange={e => setFormSlug(e.target.value)} className={inpCls} placeholder="sneakers" />
-              </div>
-              <div>
-                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Parent Category</label>
-                <select value={formParentId} onChange={e => setFormParentId(e.target.value)} className={inpCls}>
-                  <option value="">None (Root)</option>
-                  {allCategories.filter(c => c.id !== editCategory?.id).map(c => <option key={c.id} value={c.id}>{c.parent_id ? "  └ " : ""}{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Image URL</label>
-                <input value={formImageUrl} onChange={e => setFormImageUrl(e.target.value)} className={inpCls} placeholder="https://..." />
-                {formImageUrl && (
-                  <div className={cn("mt-2 w-20 h-20 rounded-[10px] overflow-hidden border", brd)}>
-                    <img src={formImageUrl} alt="" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.display = "none")} />
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
+              {/* 1. GENERAL */}
+              <CatSection dark={dark} icon={FolderOpen} title="General Information">
+                <div className="space-y-4">
+                  <div>
+                    <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Category Name <span className="text-red-500">*</span></label>
+                    <input value={form.name}
+                      onChange={e => { setField("name", e.target.value); if (!slugEdited) setField("slug", slugifyClient(e.target.value)); }}
+                      className={cn(inpCls, !form.name.trim() && "border-red-500/40")} placeholder="e.g. Sneakers" />
+                    {!form.name.trim() && <p className="text-[11px] text-red-500 mt-1">Category name is required</p>}
                   </div>
-                )}
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={formIsActive} onChange={e => setFormIsActive(e.target.checked)} className="rounded" />
-                <span className={cn("text-sm font-semibold", txt)}>Active (visible on storefront)</span>
-              </label>
+                  <div>
+                    <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Category Slug</label>
+                    <div className={cn("flex items-center rounded-[11px] border-[1.5px] overflow-hidden", inp)}>
+                      <span className={cn("pl-3 text-sm shrink-0", sub)}>/category/</span>
+                      <input value={form.slug} onChange={e => { setSlugEdited(true); setField("slug", e.target.value); }}
+                        className="flex-1 h-[42px] bg-transparent px-1 text-sm outline-none" placeholder="sneakers" />
+                    </div>
+                    <p className={cn("text-[11px] mt-1", sub)}>Auto-generated from the name — click to customize.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Category Type</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[["physical", "Physical", Package], ["digital", "Digital", Zap]].map(([val, lbl, Ico]) => (
+                          <button key={val as string} type="button" onClick={() => setField("category_type", val as string)}
+                            className={cn("h-[42px] rounded-[11px] border-[1.5px] text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-colors",
+                              form.category_type === val ? "border-[#2563eb] bg-[#2563eb]/5 text-[#2563eb]" : cn(brd, sub, hover))}>
+                            <Ico className="w-3.5 h-3.5" /> {lbl as string}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Ordering Number</label>
+                      <input type="number" value={form.sort_order} onChange={e => setField("sort_order", e.target.value)} className={inpCls} placeholder="0" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Parent Category</label>
+                      <select value={form.parent_id} onChange={e => setField("parent_id", e.target.value)} className={inpCls}>
+                        <option value="">None (Root category)</option>
+                        {allCategories.filter(c => c.id !== editCategory?.id).map(c => <option key={c.id} value={c.id}>{c.parent_id ? "└ " : ""}{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Status</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[["active", true], ["inactive", false]].map(([lbl, val]) => (
+                          <button key={lbl as string} type="button" onClick={() => setField("is_active", val as boolean)}
+                            className={cn("h-[42px] rounded-[11px] border-[1.5px] text-[13px] font-semibold capitalize transition-colors",
+                              form.is_active === val ? (val ? "border-emerald-500 bg-emerald-500/5 text-emerald-600" : "border-[#8a929c] bg-[#8a929c]/5 " + txt) : cn(brd, sub, hover))}>
+                            {lbl as string}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CatSection>
+
+              {/* 2. IMAGES */}
+              <CatSection dark={dark} icon={ImageIcon} title="Images">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <CategoryImageUpload dark={dark} label="Banner" hint="1920×480" value={form.banner_url} onChange={v => setField("banner_url", v)} />
+                  <CategoryImageUpload dark={dark} label="Icon" hint="128×128" value={form.icon_url} onChange={v => setField("icon_url", v)} />
+                  <CategoryImageUpload dark={dark} label="Cover Image" hint="800×600" value={form.cover_url} onChange={v => setField("cover_url", v)} />
+                </div>
+              </CatSection>
+
+              {/* 3. SEO */}
+              <CatSection dark={dark} icon={Search} title="SEO">
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={cn("text-[12px] font-semibold", txt)}>Meta Title</label>
+                      <span className={cn("text-[11px]", form.meta_title.length > 60 ? "text-amber-500" : sub)}>{form.meta_title.length}/60</span>
+                    </div>
+                    <input value={form.meta_title} onChange={e => setField("meta_title", e.target.value)} className={inpCls} placeholder={form.name || "Category title for search engines"} />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={cn("text-[12px] font-semibold", txt)}>Meta Description</label>
+                      <span className={cn("text-[11px]", form.meta_description.length > 160 ? "text-amber-500" : sub)}>{form.meta_description.length}/160</span>
+                    </div>
+                    <textarea value={form.meta_description} onChange={e => setField("meta_description", e.target.value)} rows={3}
+                      className={cn("w-full rounded-[11px] border-[1.5px] p-3 text-sm outline-none resize-y", inp, "focus:border-[#2563eb]")} placeholder="Brief description shown in search results..." />
+                  </div>
+                </div>
+              </CatSection>
+
+              {/* 4. FILTERING ATTRIBUTES */}
+              <CatSection dark={dark} icon={Filter} title="Filtering Attributes">
+                <p className={cn("text-[11px] mb-3", sub)}>Attributes customers can filter by on this category's product listing.</p>
+                <div className="flex flex-wrap gap-2">
+                  {FILTER_ATTRIBUTES.map(attr => {
+                    const on = form.filter_attributes.includes(attr);
+                    return (
+                      <button key={attr} type="button"
+                        onClick={() => setField("filter_attributes", on ? form.filter_attributes.filter(a => a !== attr) : [...form.filter_attributes, attr])}
+                        className={cn("h-8 px-3 rounded-full border-[1.5px] text-[12px] font-semibold flex items-center gap-1.5 transition-colors",
+                          on ? "border-[#2563eb] bg-[#2563eb] text-white" : cn(brd, sub, hover))}>
+                        {on && <CheckCircle2 className="w-3.5 h-3.5" />} {attr}
+                      </button>
+                    );
+                  })}
+                </div>
+              </CatSection>
+
+              {/* 5. DISPLAY OPTIONS */}
+              <CatSection dark={dark} icon={Eye} title="Display Options">
+                <div className="space-y-1">
+                  {[
+                    ["is_featured", "Featured Category", "Highlight this category in featured sections", Star],
+                    ["show_in_nav", "Show in Navigation", "Display in the main navigation menu", Menu],
+                    ["show_on_homepage", "Show on Homepage", "Feature this category on the homepage", Home],
+                  ].map(([key, label, desc, Ico]) => (
+                    <label key={key as string} className={cn("flex items-center gap-3 py-2.5 cursor-pointer")}>
+                      <div className={cn("w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0", dark ? "bg-[#1d242e]" : "bg-[#f0f2f5]")}>
+                        <Ico className={cn("w-4 h-4", sub)} />
+                      </div>
+                      <div className="flex-1">
+                        <p className={cn("text-[13px] font-semibold", txt)}>{label as string}</p>
+                        <p className={cn("text-[11px]", sub)}>{desc as string}</p>
+                      </div>
+                      <button type="button" onClick={() => setField(key as keyof CategoryForm, !form[key as keyof CategoryForm] as never)}
+                        className={cn("w-11 h-6 rounded-full transition-colors relative shrink-0", form[key as keyof CategoryForm] ? "bg-[#2563eb]" : dark ? "bg-[#252c36]" : "bg-[#d1d5db]")}>
+                        <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform", form[key as keyof CategoryForm] ? "translate-x-[22px]" : "translate-x-0.5")} />
+                      </button>
+                    </label>
+                  ))}
+                </div>
+              </CatSection>
             </div>
 
-            <div className={cn("px-6 py-4 border-t shrink-0", brd)}>
+            <div className={cn("px-6 py-4 border-t shrink-0", brd, dark ? "bg-[#171c24]" : "bg-white")}>
               <div className="flex gap-3">
                 <button onClick={() => setFormOpen(false)} className={cn("flex-1 h-[44px] rounded-[11px] border text-sm font-semibold", brd, txt, hover)}>Cancel</button>
-                <button onClick={handleSave} disabled={formSaving || !formName} className="flex-1 h-[44px] rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                <button onClick={handleSave} disabled={formSaving || !form.name.trim()} className="flex-1 h-[44px] rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                   {formSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {formSaving ? "Saving..." : editCategory ? "Update" : "Create"}
+                  {formSaving ? "Saving..." : editCategory ? "Update Category" : "Create Category"}
                 </button>
               </div>
             </div>
@@ -947,6 +1104,102 @@ function Field({ label, value, dark }: { label: string; value: string; dark: boo
     <div>
       <p className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", sub)}>{label}</p>
       <p className={cn("text-sm", txt)}>{value}</p>
+    </div>
+  );
+}
+
+// ──────────────────────────── FORM SECTION CARD ────────────────────────────
+
+function CatSection({ dark, icon: Icon, title, children }: { dark: boolean; icon: typeof FolderOpen; title: string; children: React.ReactNode }) {
+  const p = dark ? "bg-[#171c24]" : "bg-white";
+  const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
+  const txt = dark ? "text-[#e7ebf0]" : "text-[#16181d]";
+  return (
+    <div className={cn("rounded-[16px] border", p, brd)}>
+      <div className={cn("flex items-center gap-2.5 px-4 sm:px-5 py-3.5 border-b", brd)}>
+        <div className="w-7 h-7 rounded-[8px] bg-[#2563eb]/10 flex items-center justify-center">
+          <Icon className="w-4 h-4 text-[#2563eb]" />
+        </div>
+        <h3 className={cn("text-[14px] font-extrabold", txt)}>{title}</h3>
+      </div>
+      <div className="px-4 sm:px-5 py-4">{children}</div>
+    </div>
+  );
+}
+
+// ──────────────────────────── CATEGORY IMAGE UPLOAD ────────────────────────────
+
+const CAT_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/svg+xml"];
+const CAT_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/svg+xml": "svg" };
+
+function CategoryImageUpload({ dark, label, hint, value, onChange }: { dark: boolean; label: string; hint: string; value: string; onChange: (v: string) => void }) {
+  const sub = dark ? "text-[#8b95a3]" : "text-[#8a929c]";
+  const txt = dark ? "text-[#e7ebf0]" : "text-[#16181d]";
+  const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState("");
+
+  const upload = async (file: File) => {
+    setError("");
+    if (!CAT_IMG_TYPES.includes(file.type)) { setError("Use JPG, PNG, WebP, GIF, AVIF or SVG"); return; }
+    if (file.size > 8 * 1024 * 1024) { setError("Image exceeds 8MB"); return; }
+    setUploading(true);
+    try {
+      const supabase = createClient();
+      const ext = CAT_EXT[file.type] || "bin";
+      const path = `categories/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("category-images").upload(path, file, { contentType: file.type, upsert: false });
+      if (upErr) {
+        const fd = new FormData();
+        fd.append("files", file); fd.append("bucket", "category-images"); fd.append("folder", "categories");
+        const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.files?.[0]?.url) throw new Error(d.error || upErr.message || "Upload failed");
+        onChange(d.files[0].url);
+      } else {
+        const { data: pub } = supabase.storage.from("category-images").getPublicUrl(path);
+        onChange(pub.publicUrl);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div>
+      <label className={cn("text-[11px] font-bold mb-1.5 block", sub)}>{label}</label>
+      <input ref={fileRef} type="file" accept={CAT_IMG_TYPES.join(",")} className="hidden" onChange={e => e.target.files?.[0] && upload(e.target.files[0])} />
+      {value ? (
+        <div className={cn("relative rounded-[12px] border overflow-hidden group aspect-[4/3]", brd)}>
+          <img src={value} alt="" className="w-full h-full object-cover" onError={e => (e.currentTarget.style.opacity = "0.3")} />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="px-2.5 h-7 rounded-[7px] bg-white text-black text-[10px] font-bold flex items-center gap-1">
+              {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Replace
+            </button>
+            <button type="button" onClick={() => onChange("")} className="px-2.5 h-7 rounded-[7px] bg-red-500 text-white text-[10px] font-bold flex items-center gap-1">
+              <Trash2 className="w-3 h-3" /> Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+          onDrop={e => { e.preventDefault(); setDragOver(false); if (!uploading && e.dataTransfer.files?.[0]) upload(e.dataTransfer.files[0]); }}
+          className={cn("rounded-[12px] border-2 border-dashed aspect-[4/3] flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-colors px-2",
+            dragOver ? "border-[#2563eb] bg-[#2563eb]/5" : brd, uploading && "opacity-60 pointer-events-none")}>
+          {uploading ? <Loader2 className="w-5 h-5 animate-spin text-[#2563eb]" /> : <Upload className={cn("w-5 h-5", dragOver ? "text-[#2563eb]" : sub)} />}
+          <p className={cn("text-[11px] font-semibold", txt)}>{uploading ? "Uploading…" : "Choose or drop"}</p>
+          <p className={cn("text-[9px]", sub)}>{hint}</p>
+        </div>
+      )}
+      {error && <p className="text-[10px] text-red-500 mt-1">{error}</p>}
     </div>
   );
 }

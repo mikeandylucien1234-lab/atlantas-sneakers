@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { Drawer } from "@/components/ui/drawer";
 import {
   Tag, Gift, Percent, DollarSign, Truck, ShoppingBag, Zap, Clock,
@@ -145,15 +146,47 @@ export function AdminCoupons({ dark }: Props) {
     if (!form.code || !form.value) return;
     setFormSubmitting(true);
     try {
-      if (editId) {
-        await fetch("/api/admin/coupons", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editId, ...form }) });
-      } else {
-        const r = await fetch("/api/admin/coupons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-        if (!r.ok) { const e = await r.json(); alert(e.error || "Failed"); return; }
-      }
+      // Normalized payload for the direct-Supabase fallback
+      const record = {
+        code: form.code.toUpperCase(), type: form.type, value: parseFloat(form.value),
+        description: form.description || null, campaign: form.campaign || null,
+        min_order: form.min_order ? parseFloat(form.min_order) : 0,
+        max_discount: form.max_discount ? parseFloat(form.max_discount) : null,
+        max_uses: form.max_uses ? parseInt(form.max_uses) : null,
+        starts_at: form.starts_at || null, expires_at: form.expires_at || null,
+        is_active: form.is_active !== false,
+      };
+
+      const viaApi = async () => {
+        const method = editId ? "PUT" : "POST";
+        const body = editId ? { id: editId, ...form } : form;
+        const r = await fetch("/api/admin/coupons", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const text = await r.text();
+        let d; try { d = text ? JSON.parse(text) : {}; } catch { const e = new Error("nonjson"); e.nonJson = true; throw e; }
+        if (!r.ok) throw new Error(d.error || "Failed to save coupon");
+      };
+
+      const viaSupabase = async () => {
+        const supabase = createClient();
+        if (editId) {
+          const { error } = await supabase.from("coupons").update({ ...record, updated_at: new Date().toISOString() }).eq("id", editId);
+          if (error) throw new Error(error.message);
+        } else {
+          const { data: dup } = await supabase.from("coupons").select("id").eq("code", record.code).maybeSingle();
+          if (dup) throw new Error("Coupon code already exists");
+          const { error } = await supabase.from("coupons").insert({ ...record, used_count: 0, total_discount_given: 0 });
+          if (error) throw new Error(error.message);
+        }
+      };
+
+      try { await viaApi(); }
+      catch (e) { if (e.nonJson) await viaSupabase(); else throw e; }
+
       setCreateOpen(false); fetchList(); fetchKpis();
       if (detailId === editId && editId) fetchDetail(editId);
-    } catch {} finally { setFormSubmitting(false); }
+    } catch (e) {
+      alert(e.message || "Failed to create coupon");
+    } finally { setFormSubmitting(false); }
   };
 
   const handleToggle = async (id: string, active: boolean) => {

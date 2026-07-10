@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
   const { data: existing } = await supabase.from("coupons").select("id").eq("code", code.toUpperCase()).single();
   if (existing) return Response.json({ error: "Coupon code already exists" }, { status: 409 });
 
-  const { data, error } = await safeQuery(async () => await supabase.from("coupons").insert({
+  const { data, error } = await supabase.from("coupons").insert({
     code: code.toUpperCase(), type, value: parseFloat(value),
     description: description || null, campaign: campaign || null,
     min_order: min_order ? parseFloat(min_order) : 0,
@@ -124,9 +124,9 @@ export async function POST(request: NextRequest) {
     starts_at: starts_at || null, expires_at: expires_at || null,
     is_active: is_active !== false, used_count: 0, total_discount_given: 0,
     conditions: conditions || null, created_by: auth.user.id,
-  }).select().single(), { data: null, error: "Insert failed" } as any);
+  }).select().single();
 
-  if (!data) return Response.json({ error: "Failed to create coupon" }, { status: 500 });
+  if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json({ success: true, coupon: data });
 }
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import {
   ChevronDown, ChevronUp, Save, Send, ArrowLeft, Loader2, Plus, X,
   Package, Image as ImageIcon, DollarSign, Tag, Search, FileText,
@@ -331,23 +332,52 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
       showToast("Please select image files only", "error");
       return;
     }
+    const tooBig = list.find(f => f.size > 8 * 1024 * 1024);
+    if (tooBig) { showToast(`${tooBig.name} exceeds the 8MB limit`, "error"); return; }
+
     setUploading(true);
     setUploadProgress(`Uploading ${list.length} image${list.length > 1 ? "s" : ""}...`);
-    try {
+
+    const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/svg+xml": "svg" };
+
+    // Primary path: upload straight to Supabase Storage from the browser.
+    // This bypasses the hosting layer that returns HTML for multipart POSTs
+    // (the "Server act… is not valid JSON" error).
+    const uploadDirect = async (): Promise<string[]> => {
+      const supabase = createClient();
+      const urls: string[] = [];
+      for (const file of list) {
+        const ext = EXT[file.type] || "bin";
+        const path = `products/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error } = await supabase.storage.from("product-images").upload(path, file, { contentType: file.type, upsert: false });
+        if (error) throw error;
+        const { data: pub } = supabase.storage.from("product-images").getPublicUrl(path);
+        urls.push(pub.publicUrl);
+      }
+      return urls;
+    };
+
+    // Fallback: the server upload route
+    const uploadViaServer = async (): Promise<string[]> => {
       const fd = new FormData();
       list.forEach(f => fd.append("files", f));
       fd.append("folder", "products");
       const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
-      const data = await res.json();
+      const text = await res.text();
+      let data: { files?: { url: string }[]; error?: string };
+      try { data = text ? JSON.parse(text) : {}; } catch { throw new Error("Upload was blocked by the server"); }
       if (!res.ok) throw new Error(data.error || "Upload failed");
-      const urls: string[] = (data.files || []).map((f: { url: string }) => f.url);
+      return (data.files || []).map(f => f.url);
+    };
+
+    try {
+      let urls: string[] = [];
+      try { urls = await uploadDirect(); }
+      catch { urls = await uploadViaServer(); }
       if (urls.length > 0) {
         setForm(f => ({ ...f, images: [...f.images, ...urls.filter(u => !f.images.includes(u))] }));
         setErrors(e => { const n = { ...e }; delete n.images; return n; });
         showToast(`${urls.length} image${urls.length > 1 ? "s" : ""} uploaded`);
-      }
-      if (data.errors?.length > 0) {
-        showToast(`${data.errors[0].name}: ${data.errors[0].error}`, "error");
       }
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Upload failed", "error");
@@ -361,13 +391,12 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
   const removeImage = async (index: number) => {
     const url = form.images[index];
     set("images", form.images.filter((_, j) => j !== index));
-    // Remove from storage if hosted in our bucket (fire and forget)
-    if (url.includes("/product-images/")) {
-      fetch("/api/admin/upload", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      }).catch(() => {});
+    // Remove from storage if hosted in our bucket (fire and forget, direct)
+    const marker = "/object/public/product-images/";
+    const idx = url.indexOf(marker);
+    if (idx >= 0) {
+      const path = decodeURIComponent(url.slice(idx + marker.length));
+      createClient().storage.from("product-images").remove([path]).catch(() => {});
     }
   };
 

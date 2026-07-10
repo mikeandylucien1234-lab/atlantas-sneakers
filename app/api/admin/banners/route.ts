@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 
   if (!name || !location) return Response.json({ error: "Name and location are required" }, { status: 400 });
 
-  const { data, error } = await safeQuery(async () => await supabase.from("banners").insert({
+  const { data, error } = await supabase.from("banners").insert({
     name, location, campaign: campaign || null, description: description || null,
     image_desktop: image_desktop || null, image_tablet: image_tablet || null,
     image_mobile: image_mobile || null, alt_text: alt_text || null,
@@ -123,9 +123,9 @@ export async function POST(request: NextRequest) {
     dimensions: dimensions || null, seo_title: seo_title || null,
     seo_description: seo_description || null,
     clicks: 0, impressions: 0, conversions: 0, created_by: auth.user.id,
-  }).select().single(), { data: null, error: "Failed" } as any);
+  }).select().single();
 
-  if (!data) return Response.json({ error: "Failed to create banner" }, { status: 500 });
+  if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json({ success: true, banner: data });
 }
 

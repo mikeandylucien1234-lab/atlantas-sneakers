@@ -2,7 +2,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 
-const BUCKET = "product-images";
+const DEFAULT_BUCKET = "product-images";
+const ALLOWED_BUCKETS = new Set(["product-images", "banner-images"]);
 const MAX_SIZE = 8 * 1024 * 1024; // 8MB
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
@@ -62,6 +63,8 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const files = formData.getAll("files") as File[];
     const folder = (formData.get("folder") as string) || "products";
+    const bucketParam = (formData.get("bucket") as string) || DEFAULT_BUCKET;
+    const BUCKET = ALLOWED_BUCKETS.has(bucketParam) ? bucketParam : DEFAULT_BUCKET;
 
     if (!files || files.length === 0) {
       return Response.json({ error: "No files provided" }, { status: 400 });
@@ -126,19 +129,23 @@ export async function DELETE(request: NextRequest) {
 
     const body = await request.json();
     const { url, path } = body;
+    let bucket = ALLOWED_BUCKETS.has(body.bucket) ? body.bucket : DEFAULT_BUCKET;
 
     let targetPath = path;
     if (!targetPath && url) {
-      const marker = `/object/public/${BUCKET}/`;
-      const idx = url.indexOf(marker);
-      if (idx >= 0) targetPath = decodeURIComponent(url.slice(idx + marker.length));
+      // Derive both bucket and path from a public URL of any allowed bucket
+      for (const b of ALLOWED_BUCKETS) {
+        const marker = `/object/public/${b}/`;
+        const idx = url.indexOf(marker);
+        if (idx >= 0) { bucket = b; targetPath = decodeURIComponent(url.slice(idx + marker.length)); break; }
+      }
     }
 
     if (!targetPath) {
       return Response.json({ error: "path or url required" }, { status: 400 });
     }
 
-    const { error } = await supabase.storage.from(BUCKET).remove([targetPath]);
+    const { error } = await supabase.storage.from(bucket).remove([targetPath]);
     if (error) {
       return Response.json({ error: error.message }, { status: 400 });
     }

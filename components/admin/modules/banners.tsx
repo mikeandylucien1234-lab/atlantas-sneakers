@@ -1,8 +1,9 @@
 // @ts-nocheck
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { Drawer } from "@/components/ui/drawer";
 import {
   Image as ImageIcon, Layout, Megaphone, Monitor, Tablet, Smartphone,
@@ -167,15 +168,40 @@ export function AdminBanners({ dark }: Props) {
     if (!form.name || !form.location) return;
     setFormSubmitting(true);
     try {
-      if (editId) {
-        await fetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editId, ...form, priority: parseInt(form.priority || "0") }) });
-      } else {
-        const r = await fetch("/api/admin/banners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, priority: parseInt(form.priority || "0") }) });
-        if (!r.ok) { const e = await r.json(); alert(e.error || "Failed"); return; }
-      }
+      const payload = { ...form, priority: parseInt(form.priority || "0") };
+      // Normalize empty strings to null and drop empty timestamps
+      ["campaign", "description", "image_desktop", "image_tablet", "image_mobile", "alt_text", "link_url", "link_type", "cta_label", "country", "language", "seo_title", "seo_description", "starts_at", "ends_at"].forEach(k => {
+        if (payload[k] === "") payload[k] = null;
+      });
+
+      const viaApi = async () => {
+        const method = editId ? "PUT" : "POST";
+        const body = editId ? { id: editId, ...payload } : payload;
+        const r = await fetch("/api/admin/banners", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const text = await r.text();
+        let d; try { d = text ? JSON.parse(text) : {}; } catch { const e = new Error("nonjson"); e.nonJson = true; throw e; }
+        if (!r.ok) throw new Error(d.error || "Failed to save banner");
+      };
+
+      const viaSupabase = async () => {
+        const supabase = createClient();
+        if (editId) {
+          const { error } = await supabase.from("banners").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", editId);
+          if (error) throw new Error(error.message);
+        } else {
+          const { error } = await supabase.from("banners").insert({ ...payload, is_active: form.is_active !== false, clicks: 0, impressions: 0, conversions: 0 });
+          if (error) throw new Error(error.message);
+        }
+      };
+
+      try { await viaApi(); }
+      catch (e) { if (e.nonJson) await viaSupabase(); else throw e; }
+
       setCreateOpen(false); fetchList(); fetchKpis();
       if (detailId === editId && editId) fetchDetail(editId);
-    } catch {} finally { setFormSubmitting(false); }
+    } catch (e) {
+      alert(e.message || "Failed to create banner");
+    } finally { setFormSubmitting(false); }
   };
 
   const handleToggle = async (id: string, active: boolean) => {
@@ -635,18 +661,9 @@ export function AdminBanners({ dark }: Props) {
 
           <div className={cn("rounded-[10px] p-3 space-y-3", dark ? "bg-[#1d242e]" : "bg-[#f6f8fb]")}>
             <p className={cn("text-[12px] font-bold uppercase", sub)}>Media</p>
-            <div>
-              <label className={cn("text-[11px] font-bold", sub)}>Desktop Image URL</label>
-              <input value={form.image_desktop} onChange={e => setForm({ ...form, image_desktop: e.target.value })} className={cn("mt-1", inputCls)} placeholder="https://..." />
-            </div>
-            <div>
-              <label className={cn("text-[11px] font-bold", sub)}>Tablet Image URL</label>
-              <input value={form.image_tablet} onChange={e => setForm({ ...form, image_tablet: e.target.value })} className={cn("mt-1", inputCls)} placeholder="https://..." />
-            </div>
-            <div>
-              <label className={cn("text-[11px] font-bold", sub)}>Mobile Image URL</label>
-              <input value={form.image_mobile} onChange={e => setForm({ ...form, image_mobile: e.target.value })} className={cn("mt-1", inputCls)} placeholder="https://..." />
-            </div>
+            <BannerImageField dark={dark} label="Desktop Image" hint="Recommended 1920×640" value={form.image_desktop} onChange={v => setForm(f => ({ ...f, image_desktop: v }))} />
+            <BannerImageField dark={dark} label="Tablet Image" hint="Recommended 1024×400 — optional" value={form.image_tablet} onChange={v => setForm(f => ({ ...f, image_tablet: v }))} />
+            <BannerImageField dark={dark} label="Mobile Image" hint="Recommended 640×400 — optional" value={form.image_mobile} onChange={v => setForm(f => ({ ...f, image_mobile: v }))} />
             <div>
               <label className={cn("text-[11px] font-bold", sub)}>Alt Text</label>
               <input value={form.alt_text} onChange={e => setForm({ ...form, alt_text: e.target.value })} className={cn("mt-1", inputCls)} placeholder="Descriptive alt text for accessibility" />
@@ -758,6 +775,102 @@ export function AdminBanners({ dark }: Props) {
           </button>
         </div>
       </Drawer>
+    </div>
+  );
+}
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/svg+xml"];
+const EXT_MAP = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/svg+xml": "svg" };
+
+function BannerImageField({ dark, label, hint, value, onChange }) {
+  const sub = dark ? "text-[#8b95a3]" : "text-[#8a929c]";
+  const txt = dark ? "text-[#e7ebf0]" : "text-[#16181d]";
+  const border = dark ? "border-[#252c36]" : "border-[#eef0f3]";
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState("");
+  const [showUrl, setShowUrl] = useState(false);
+
+  const upload = async (file) => {
+    setError("");
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) { setError("Unsupported file type (use JPG, PNG, WebP, GIF, AVIF or SVG)"); return; }
+    if (file.size > 8 * 1024 * 1024) { setError("Image exceeds the 8MB limit"); return; }
+    setUploading(true);
+    try {
+      const supabase = createClient();
+      const ext = EXT_MAP[file.type] || "bin";
+      const path = `banners/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("banner-images").upload(path, file, { contentType: file.type, upsert: false });
+      if (upErr) {
+        // Fallback to the server upload route if direct storage is unavailable
+        const fd = new FormData();
+        fd.append("files", file);
+        fd.append("bucket", "banner-images");
+        fd.append("folder", "banners");
+        const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.files?.[0]?.url) throw new Error(d.error || upErr.message || "Upload failed");
+        onChange(d.files[0].url);
+      } else {
+        const { data: pub } = supabase.storage.from("banner-images").getPublicUrl(path);
+        onChange(pub.publicUrl);
+      }
+    } catch (e) {
+      setError(e.message || "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <label className={cn("text-[11px] font-bold", sub)}>{label}</label>
+        <button type="button" onClick={() => setShowUrl(v => !v)} className={cn("text-[10px] font-bold", sub, "hover:text-[#2563eb]")}>
+          {showUrl ? "Use upload" : "Paste URL instead"}
+        </button>
+      </div>
+
+      <input ref={fileRef} type="file" accept={ALLOWED_IMAGE_TYPES.join(",")} className="hidden"
+        onChange={e => e.target.files?.[0] && upload(e.target.files[0])} />
+
+      {value ? (
+        <div className={cn("mt-1 relative rounded-[10px] border overflow-hidden group", border)}>
+          <img src={value} alt="" className="w-full max-h-40 object-cover" onError={e => { e.currentTarget.style.opacity = "0.3"; }} />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+              className="px-3 h-8 rounded-[8px] bg-white text-black text-[11px] font-bold flex items-center gap-1">
+              {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Replace
+            </button>
+            <button type="button" onClick={() => onChange("")}
+              className="px-3 h-8 rounded-[8px] bg-red-500 text-white text-[11px] font-bold flex items-center gap-1">
+              <Trash2 className="w-3 h-3" /> Remove
+            </button>
+          </div>
+        </div>
+      ) : showUrl ? (
+        <input value={value} onChange={e => onChange(e.target.value)} placeholder="https://..."
+          className={cn("mt-1 w-full px-3 py-2 rounded-[10px] border text-[13px] outline-none", border, dark ? "bg-[#171c24] text-[#e7ebf0]" : "bg-white text-[#16181d]")} />
+      ) : (
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+          onDrop={e => { e.preventDefault(); setDragOver(false); if (!uploading && e.dataTransfer.files?.[0]) upload(e.dataTransfer.files[0]); }}
+          className={cn("mt-1 rounded-[10px] border-2 border-dashed p-5 text-center cursor-pointer transition-colors select-none",
+            dragOver ? "border-[#2563eb] bg-[#2563eb]/5" : border, uploading && "opacity-60 pointer-events-none")}>
+          {uploading ? (
+            <><Loader2 className="w-6 h-6 mx-auto mb-1.5 animate-spin text-[#2563eb]" /><p className={cn("text-[12px] font-semibold", txt)}>Uploading…</p></>
+          ) : (
+            <><Upload className={cn("w-6 h-6 mx-auto mb-1.5", dragOver ? "text-[#2563eb]" : sub)} />
+            <p className={cn("text-[12px] font-semibold", txt)}>Click to choose a photo or drag & drop</p>
+            <p className={cn("text-[10px] mt-0.5", sub)}>{hint} · up to 8MB</p></>
+          )}
+        </div>
+      )}
+      {error && <p className="text-[11px] text-red-500 mt-1 font-medium">{error}</p>}
     </div>
   );
 }

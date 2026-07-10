@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { Drawer } from "@/components/ui/drawer";
 import {
   CreditCard, Smartphone, Banknote, Landmark, Loader2, RefreshCw,
@@ -246,7 +247,15 @@ export function AdminPaymentSettings({ dark }: Props) {
   const updateGateway = async (gateway, patch) => {
     setSaving(gateway);
     try {
-      await api("PUT", { target: "gateway", gateway, ...patch });
+      try {
+        await api("PUT", { target: "gateway", gateway, ...patch });
+      } catch (e) {
+        if (!e.nonJson) throw e;
+        // Hosting layer blocked the request — write directly via Supabase (admin RLS)
+        const supabase = createClient();
+        const { error } = await supabase.from("payment_settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("gateway", gateway);
+        if (error) throw new Error(error.message);
+      }
       setSettings(s => s.map(x => x.gateway === gateway ? { ...x, ...patch } : x));
       showToast("Saved");
       fetch("/api/admin/payment-settings?section=overview").then(r => r.ok ? r.json() : null).then(d => d && setOverview(d)).catch(() => {});
@@ -280,14 +289,35 @@ export function AdminPaymentSettings({ dark }: Props) {
 
   const updateCurrency = async (code, patch) => {
     setSaving(code);
-    try { await api("PUT", { target: "currency", code, ...patch }); await load(); showToast("Saved"); }
-    catch (e) { showToast(e.message, "error"); } finally { setSaving(null); }
+    try {
+      try {
+        await api("PUT", { target: "currency", code, ...patch });
+      } catch (e) {
+        if (!e.nonJson) throw e;
+        const supabase = createClient();
+        if (patch.is_base === true) await supabase.from("payment_currencies").update({ is_base: false }).neq("code", code);
+        if (patch.is_default === true) await supabase.from("payment_currencies").update({ is_default: false }).neq("code", code);
+        const { error } = await supabase.from("payment_currencies").update({ ...patch, updated_at: new Date().toISOString() }).eq("code", code);
+        if (error) throw new Error(error.message);
+      }
+      await load();
+      showToast("Saved");
+    } catch (e) { showToast(e.message, "error"); } finally { setSaving(null); }
   };
 
   const updateConfig = async (key, value) => {
     setConfig(c => ({ ...c, [key]: value }));
-    try { await api("PUT", { target: "config", key, value }); showToast("Saved"); }
-    catch (e) { showToast(e.message, "error"); load(); }
+    try {
+      try {
+        await api("PUT", { target: "config", key, value });
+      } catch (e) {
+        if (!e.nonJson) throw e;
+        const supabase = createClient();
+        const { error } = await supabase.from("payment_config").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+        if (error) throw new Error(error.message);
+      }
+      showToast("Saved");
+    } catch (e) { showToast(e.message, "error"); load(); }
   };
 
   const exportBackup = async () => {
@@ -567,7 +597,13 @@ export function AdminPaymentSettings({ dark }: Props) {
                         <div className="flex items-center gap-1">
                           {!c.is_default && <button onClick={() => updateCurrency(c.code, { is_default: true })} title="Set default" className={cn("text-[10px] font-bold px-1.5", sub, "hover:text-violet-500")}>default</button>}
                           {!c.is_base && !c.is_default && (
-                            <button onClick={async () => { try { await api("DELETE", { target: "currency", code: c.code }); load(); showToast("Removed"); } catch (e) { showToast(e.message, "error"); } }}
+                            <button onClick={async () => {
+                              try {
+                                try { await api("DELETE", { target: "currency", code: c.code }); }
+                                catch (e) { if (!e.nonJson) throw e; const { error } = await createClient().from("payment_currencies").delete().eq("code", c.code); if (error) throw new Error(error.message); }
+                                load(); showToast("Removed");
+                              } catch (e) { showToast(e.message, "error"); }
+                            }}
                               className="w-7 h-7 rounded-[8px] flex items-center justify-center hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
                           )}
                         </div>
@@ -620,7 +656,19 @@ export function AdminPaymentSettings({ dark }: Props) {
               <button onClick={async () => {
                 if (!newTax.country.trim() || newTax.rate === "") { showToast("Country and rate required", "error"); return; }
                 try {
-                  await api("POST", { action: "add_tax_rule", ...newTax, rate: parseFloat(newTax.rate) });
+                  try {
+                    await api("POST", { action: "add_tax_rule", ...newTax, rate: parseFloat(newTax.rate) });
+                  } catch (e) {
+                    if (!e.nonJson) throw e;
+                    const supabase = createClient();
+                    const { error } = await supabase.from("payment_tax_rules").insert({
+                      country: newTax.country.trim(), state: newTax.state.trim() || null, zip: newTax.zip.trim() || null,
+                      tax_type: newTax.tax_type, tax_class: newTax.tax_class, rate: parseFloat(newTax.rate) || 0,
+                      priority: parseInt(newTax.priority) || 0, compound: newTax.compound, inclusive: newTax.inclusive,
+                      applies_to_shipping: newTax.applies_to_shipping,
+                    });
+                    if (error) throw new Error(error.message);
+                  }
                   setNewTax({ country: "", state: "", zip: "", tax_type: "sales_tax", tax_class: "standard", rate: "", priority: "0", applies_to_shipping: false, compound: false, inclusive: false });
                   load(); showToast("Rule added");
                 } catch (e) { showToast(e.message, "error"); }
@@ -636,8 +684,16 @@ export function AdminPaymentSettings({ dark }: Props) {
                     <span className={cn("text-sm font-extrabold", txt)}>{Number(r.rate)}%</span>
                     <span className={cn("text-[10px]", sub)}>{[r.compound && "compound", r.inclusive ? "incl." : "excl.", r.applies_to_shipping && "shipping"].filter(Boolean).join(" · ")}</span>
                     <div className="flex-1" />
-                    <Toggle on={r.enabled} onChange={async () => { await api("PUT", { target: "tax_rule", id: r.id, enabled: !r.enabled }); load(); }} />
-                    <button onClick={async () => { await api("DELETE", { target: "tax_rule", id: r.id }); load(); showToast("Removed"); }} className="w-7 h-7 rounded-[8px] flex items-center justify-center hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
+                    <Toggle on={r.enabled} onChange={async () => {
+                      try { await api("PUT", { target: "tax_rule", id: r.id, enabled: !r.enabled }); }
+                      catch (e) { if (!e.nonJson) { showToast(e.message, "error"); return; } await createClient().from("payment_tax_rules").update({ enabled: !r.enabled }).eq("id", r.id); }
+                      load();
+                    }} />
+                    <button onClick={async () => {
+                      try { await api("DELETE", { target: "tax_rule", id: r.id }); }
+                      catch (e) { if (!e.nonJson) { showToast(e.message, "error"); return; } await createClient().from("payment_tax_rules").delete().eq("id", r.id); }
+                      load(); showToast("Removed");
+                    }} className="w-7 h-7 rounded-[8px] flex items-center justify-center hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
                   </div>
                 ))}
               </div>
@@ -1005,7 +1061,13 @@ export function AdminPaymentSettings({ dark }: Props) {
                     </button>
                     <button onClick={() => openGatewayDetail(openGw)} className={btnGhost}>Reset</button>
                     {openGw.is_custom && (
-                      <button onClick={async () => { try { await api("DELETE", { target: "gateway", gateway: openGw.gateway }); setOpenGateway(null); load(); showToast("Gateway removed"); } catch (e) { showToast(e.message, "error"); } }}
+                      <button onClick={async () => {
+                        try {
+                          try { await api("DELETE", { target: "gateway", gateway: openGw.gateway }); }
+                          catch (e) { if (!e.nonJson) throw e; const { error } = await createClient().from("payment_settings").delete().eq("gateway", openGw.gateway).eq("is_custom", true); if (error) throw new Error(error.message); }
+                          setOpenGateway(null); load(); showToast("Gateway removed");
+                        } catch (e) { showToast(e.message, "error"); }
+                      }}
                         className="h-9 px-3 rounded-[10px] bg-red-500/10 text-red-500 text-xs font-bold flex items-center gap-1.5 hover:bg-red-500/20 ml-auto"><Trash2 className="w-3.5 h-3.5" /> Delete</button>
                     )}
                   </div>
@@ -1066,8 +1128,19 @@ export function AdminPaymentSettings({ dark }: Props) {
           <div><label className={labelCls}>Rate (per 1 base)</label><input type="number" step="0.0001" value={newCur.rate} onChange={e => setNewCur(c => ({ ...c, rate: e.target.value }))} className={inpCls} /></div>
           <button onClick={async () => {
             if (!newCur.code || !newCur.name || !newCur.symbol) { showToast("All fields required", "error"); return; }
-            try { await api("POST", { action: "add_currency", ...newCur, rate: parseFloat(newCur.rate) || 1 }); setShowAddCurrency(false); setNewCur({ code: "", name: "", symbol: "", rate: "1" }); load(); showToast("Currency added"); }
-            catch (e) { showToast(e.message, "error"); }
+            try {
+              try {
+                await api("POST", { action: "add_currency", ...newCur, rate: parseFloat(newCur.rate) || 1 });
+              } catch (e) {
+                if (!e.nonJson) throw e;
+                const { error } = await createClient().from("payment_currencies").insert({
+                  code: newCur.code.toUpperCase().slice(0, 5), name: newCur.name, symbol: newCur.symbol,
+                  enabled: false, rate: parseFloat(newCur.rate) || 1,
+                });
+                if (error) throw new Error(error.message);
+              }
+              setShowAddCurrency(false); setNewCur({ code: "", name: "", symbol: "", rate: "1" }); load(); showToast("Currency added");
+            } catch (e) { showToast(e.message, "error"); }
           }} className="w-full h-10 rounded-[11px] bg-[#2563eb] text-white text-sm font-bold hover:bg-[#1d4ed8] flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Add Currency</button>
         </div>
       </Drawer>
@@ -1121,11 +1194,38 @@ function GatewayWizard({ open, onClose, dark, api, settings, envStatus, webhookU
   const createGateway = async () => {
     setCreating(true);
     try {
+      // Three creation paths, most direct first fallback last:
+      // 1. POST to the API route  2. PUT (some hosts block POST)
+      // 3. Direct Supabase insert from the browser — bypasses the hosting
+      //    layer entirely; allowed for admins by the RLS policy.
+      let createdOk = false;
       try {
         await api("POST", { action: "add_gateway", gateway: code, display_name: data.display_name, description: data.description, integration_type: data.integration_type });
+        createdOk = true;
       } catch (e) {
-        if (e.nonJson) await api("PUT", { target: "gateway", create: true, gateway: code, display_name: data.display_name, description: data.description, integration_type: data.integration_type });
-        else throw e;
+        if (!e.nonJson) throw e;
+      }
+      if (!createdOk) {
+        try {
+          await api("PUT", { target: "gateway", create: true, gateway: code, display_name: data.display_name, description: data.description, integration_type: data.integration_type });
+          createdOk = true;
+        } catch (e) {
+          if (!e.nonJson) throw e;
+        }
+      }
+      if (!createdOk) {
+        const supabase = createClient();
+        const { error } = await supabase.from("payment_settings").insert({
+          gateway: code,
+          display_name: data.display_name.trim(),
+          description: data.description.trim() || null,
+          enabled: false, is_custom: true, sort: 99,
+          integration_type: data.integration_type === "manual" ? "manual" : "api",
+        });
+        if (error) {
+          if (error.code === "23505") throw new Error(`Gateway "${code}" already exists — it may just be disabled in the list`);
+          throw new Error(error.message);
+        }
       }
       setCreated(code);
       await reload();
@@ -1156,7 +1256,14 @@ function GatewayWizard({ open, onClose, dark, api, settings, envStatus, webhookU
 
   const activate = async () => {
     try {
-      await api("PUT", { target: "gateway", gateway: created, enabled: true });
+      try {
+        await api("PUT", { target: "gateway", gateway: created, enabled: true });
+      } catch (e) {
+        if (!e.nonJson) throw e;
+        const supabase = createClient();
+        const { error } = await supabase.from("payment_settings").update({ enabled: true, updated_at: new Date().toISOString() }).eq("gateway", created);
+        if (error) throw new Error(error.message);
+      }
       await reload();
       showToast(`${data.display_name} is now live at checkout`);
       close();

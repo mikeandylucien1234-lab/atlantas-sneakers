@@ -39,6 +39,7 @@ import { AdminTikTok } from "@/components/admin/modules/tiktok";
 import { AdminSearchConsole } from "@/components/admin/modules/search-console";
 import { AdminNotifications } from "@/components/admin/modules/notifications";
 import { AdminRoles } from "@/components/admin/modules/roles";
+import { AdminStaff } from "@/components/admin/modules/staff";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,6 @@ const settingsModules = new Set([
 ]);
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
-  staff: { table: "profiles", columns: ["full_name", "email", "role"] },
   loginhistory: { table: "profiles", columns: ["email", "created_at"] },
   audit: { table: "profiles", columns: ["email", "created_at"] },
   activity: { table: "profiles", columns: ["email", "created_at"] },
@@ -185,6 +185,8 @@ export default function AdminPage() {
         return <AdminNotifications dark={dark} />;
       case "roles":
         return <AdminRoles dark={dark} />;
+      case "staff":
+        return <AdminStaff dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

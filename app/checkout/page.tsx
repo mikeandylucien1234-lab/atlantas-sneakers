@@ -55,7 +55,7 @@ function StepIndicator({ current }: { current: number }) {
   );
 }
 
-function OrderSummary({ shippingCost, grandTotal }: { shippingCost: number; grandTotal: number }) {
+function OrderSummary({ shippingCost, grandTotal, tax = 0 }: { shippingCost: number; grandTotal: number; tax?: number }) {
   const items = useCartStore((s) => s.items);
   const discount = useCartStore((s) => s.discount);
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -81,6 +81,7 @@ function OrderSummary({ shippingCost, grandTotal }: { shippingCost: number; gran
         <div className="flex justify-between"><span className="text-[#5b6472]">Subtotal</span><span className="font-semibold">${subtotal.toFixed(2)}</span></div>
         <div className="flex justify-between"><span className="text-[#5b6472]">Shipping</span><span className="font-semibold">{shippingCost === 0 ? "FREE" : `$${shippingCost.toFixed(2)}`}</span></div>
         {discount > 0 && <div className="flex justify-between"><span className="text-[#16a34a]">Discount</span><span className="font-semibold text-[#16a34a]">-${discount.toFixed(2)}</span></div>}
+        {tax > 0 && <div className="flex justify-between"><span className="text-[#5b6472]">Tax</span><span className="font-semibold">${tax.toFixed(2)}</span></div>}
         <div className="flex justify-between pt-2 border-t border-[#eef0f3]">
           <span className="text-[16px] font-extrabold text-[#16181d]">Total</span>
           <span className="text-[18px] font-extrabold text-[#16181d]">${grandTotal.toFixed(2)}</span>
@@ -180,6 +181,7 @@ export default function CheckoutPage() {
   const [lastName, setLastName] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [country, setCountry] = useState("Haiti");
   const [postalCode, setPostalCode] = useState("");
   const [shippingMethod, setShippingMethod] = useState("standard");
@@ -195,10 +197,33 @@ export default function CheckoutPage() {
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const selectedShipping = shippingOptions.find((o) => o.id === shippingMethod)!;
   const shippingCost = selectedShipping.freeAbove && subtotal >= selectedShipping.freeAbove ? 0 : selectedShipping.price;
-  const grandTotal = Math.max(0, subtotal + shippingCost - discount);
+
+  // Real-time tax preview via the shared engine
+  const [taxPreview, setTaxPreview] = useState(0);
+  useEffect(() => {
+    if (items.length === 0 || !country) { setTaxPreview(0); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/tax/calculate", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            country, state, city, postal_code: postalCode,
+            customer_type: user ? "registered" : "guest",
+            items: items.map((i) => ({ product_id: i.productId, price: i.price, quantity: i.quantity })),
+            subtotal,
+          }),
+        });
+        if (res.ok) { const d = await res.json(); setTaxPreview(Number(d.totalTax) || 0); }
+      } catch { setTaxPreview(0); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [country, state, city, postalCode, subtotal, items, user]);
+
+  const grandTotal = Math.max(0, subtotal + shippingCost - discount + taxPreview);
 
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [createdOrderNumber, setCreatedOrderNumber] = useState<string | null>(null);
+  const [createdOrderTotal, setCreatedOrderTotal] = useState<number | null>(null);
   const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
 
   // Payment methods enabled by admin (payment_settings table). null = loading, fall back to all.
@@ -244,7 +269,7 @@ export default function CheckoutPage() {
       const res = await fetch(`/api/payments/${paymentMethod}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.orderId, amount: grandTotal, reference: bankRef || undefined }),
+        body: JSON.stringify({ orderId: order.orderId, amount: order.total, reference: bankRef || undefined }),
       });
       const data = await res.json();
       if (data.paymentId) handlePaymentSuccess(order.orderNumber);
@@ -287,9 +312,9 @@ export default function CheckoutPage() {
     }
   }, [step, clientSecret, items, shippingCost, coupon, user, paymentMethod]);
 
-  const createOrder = async (): Promise<{ orderId: string; orderNumber: string } | null> => {
+  const createOrder = async (): Promise<{ orderId: string; orderNumber: string; total: number } | null> => {
     if (createdOrderId && createdOrderNumber) {
-      return { orderId: createdOrderId, orderNumber: createdOrderNumber };
+      return { orderId: createdOrderId, orderNumber: createdOrderNumber, total: createdOrderTotal ?? grandTotal };
     }
     try {
       const res = await fetch("/api/orders/create", {
@@ -297,7 +322,7 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, name: i.name, price: i.price, quantity: i.quantity })),
-          shippingAddress: { email, phone, firstName, lastName, address, city, country, postalCode },
+          shippingAddress: { email, phone, firstName, lastName, address, city, state, country, postalCode },
           shippingMethod,
           couponCode: coupon?.code,
           paymentMethod,
@@ -307,7 +332,10 @@ export default function CheckoutPage() {
       if (data.orderId) {
         setCreatedOrderId(data.orderId);
         setCreatedOrderNumber(data.orderNumber);
-        return { orderId: data.orderId, orderNumber: data.orderNumber };
+        // Server total is authoritative (includes tax) — used for the payment amount
+        const authoritativeTotal = typeof data.total === "number" ? data.total : grandTotal;
+        setCreatedOrderTotal(authoritativeTotal);
+        return { orderId: data.orderId, orderNumber: data.orderNumber, total: authoritativeTotal };
       }
       setIntentError(data.error ?? "Failed to create order");
       return null;
@@ -332,7 +360,7 @@ export default function CheckoutPage() {
       const res = await fetch(`/api/payments/${gateway}/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.orderId, userId: user?.id ?? null, amount: grandTotal, phone: mobilePhone }),
+        body: JSON.stringify({ orderId: order.orderId, userId: user?.id ?? null, amount: order.total, phone: mobilePhone }),
       });
       const data = await res.json();
       if (data.redirectUrl) {
@@ -356,7 +384,7 @@ export default function CheckoutPage() {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.orderId, userId: user?.id ?? null, amount: grandTotal, referenceNumber: bankRef }),
+        body: JSON.stringify({ orderId: order.orderId, userId: user?.id ?? null, amount: order.total, referenceNumber: bankRef }),
       });
       const data = await res.json();
       if (data.paymentId) {
@@ -450,10 +478,14 @@ export default function CheckoutPage() {
                   {addressErrors.city && <p className="text-[12px] text-[#ef4444] mt-1">{addressErrors.city}</p>}
                 </div>
                 <div>
+                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">State / Province</label>
+                  <input type="text" value={state} onChange={(e) => setState(e.target.value)} placeholder="Ouest" className={inputCls} />
+                </div>
+                <div>
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Postal Code</label>
                   <input type="text" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="HT6110" className={inputCls} />
                 </div>
-                <div className="sm:col-span-2">
+                <div>
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Country</label>
                   <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} className={inputCls} />
                 </div>
@@ -689,7 +721,7 @@ export default function CheckoutPage() {
         </div>
 
         <div className="lg:sticky lg:top-[140px] self-start">
-          <OrderSummary shippingCost={shippingCost} grandTotal={grandTotal} />
+          <OrderSummary shippingCost={shippingCost} grandTotal={grandTotal} tax={taxPreview} />
         </div>
       </div>
     </div>

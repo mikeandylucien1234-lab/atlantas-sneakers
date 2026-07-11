@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const productIds = [...new Set(items.map((i) => i.productId))];
     const { data: products, error: productsError } = await supabase
       .from("products")
-      .select("id, price")
+      .select("id, price, category_id, brand_id")
       .in("id", productIds);
 
     if (productsError || !products) {
@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
     }
 
     const productPriceMap = new Map(products.map((p) => [p.id, Number(p.price)]));
+    const productMetaMap = new Map(products.map((p) => [p.id, { category_id: p.category_id, brand_id: p.brand_id }]));
 
     const variantIds = items.filter((i) => i.variantId).map((i) => i.variantId!);
     const variantPriceMap = new Map<string, number>();
@@ -120,7 +121,44 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const total = Math.max(0, subtotal + shippingCost - discount);
+    // Compute tax server-side via the shared engine — the source of truth
+    let taxAmount = 0;
+    let taxDetails: unknown[] = [];
+    try {
+      const { data: taxRules } = await supabase.from("tax_rules").select("*").eq("status", "active");
+      if (taxRules && taxRules.length > 0) {
+        const { calculateTaxes } = await import("@/lib/tax/tax-engine");
+        const taxItems = items.map((item) => {
+          const meta = productMetaMap.get(item.productId) || {};
+          const dbPrice = item.variantId
+            ? variantPriceMap.get(item.variantId) ?? productPriceMap.get(item.productId)
+            : productPriceMap.get(item.productId);
+          return {
+            product_id: item.productId,
+            category_id: (meta as { category_id?: string }).category_id,
+            brand_id: (meta as { brand_id?: string }).brand_id,
+            is_digital: false,
+            price: Number(dbPrice) || item.price,
+            quantity: item.quantity,
+          };
+        });
+        const result = calculateTaxes(taxRules as never, {
+          country: shippingAddress?.country,
+          state: (shippingAddress as { state?: string })?.state,
+          city: shippingAddress?.city,
+          postal_code: shippingAddress?.postalCode,
+          customer_type: user ? "registered" : "guest",
+          items: taxItems,
+          subtotal,
+        });
+        taxAmount = result.totalTax;
+        taxDetails = result.taxes;
+      }
+    } catch (taxErr) {
+      console.error("Tax computation failed (order proceeds untaxed):", taxErr);
+    }
+
+    const total = Math.max(0, subtotal + shippingCost - discount + taxAmount);
 
     const orderNumber = `AS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
@@ -134,6 +172,8 @@ export async function POST(request: NextRequest) {
         subtotal,
         shipping_cost: shippingCost,
         discount,
+        tax_amount: taxAmount,
+        tax_details: taxDetails,
         total,
         payment_method: paymentMethod,
         shipping_address: shippingAddress,
@@ -171,6 +211,8 @@ export async function POST(request: NextRequest) {
       total,
       shippingCost,
       discount,
+      taxAmount,
+      taxDetails,
     });
   } catch (err) {
     console.error("Order creation error:", err);

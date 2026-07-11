@@ -424,7 +424,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { name, logo_url, is_active } = body;
+  const { name, logo_url, is_active, meta_title, meta_description } = body;
 
   if (!name) {
     return Response.json({ error: "Name is required" }, { status: 400 });
@@ -457,6 +457,8 @@ export async function POST(request: NextRequest) {
       slug,
       logo_url: logo_url || null,
       is_active: is_active ?? true,
+      meta_title: meta_title || null,
+      meta_description: meta_description || null,
     })
     .select()
     .single();
@@ -510,7 +512,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { ids } = body;
+  const { ids, transfer_to } = body;
 
   if (!ids || !Array.isArray(ids) || ids.length === 0) {
     return Response.json({ error: "Missing ids" }, { status: 400 });
@@ -533,22 +535,50 @@ export async function DELETE(request: NextRequest) {
   const blockedIds = ids.filter((id: string) => brandIdsWithProducts.has(id));
 
   if (blockedIds.length > 0) {
-    const { data: blockedBrands } = await safeQuery(
-      async () =>
-        supabase
-          .from("brands")
-          .select("name")
-          .in("id", blockedIds),
-      { data: null } as any
-    );
-    const names = (blockedBrands || []).map((b) => b.name);
-    return Response.json(
-      {
-        error: "Some brands have products and cannot be deleted",
-        brands: names,
-      },
-      { status: 400 }
-    );
+    // If a transfer target is provided, reassign the products then allow deletion
+    if (transfer_to) {
+      if (ids.includes(transfer_to)) {
+        return Response.json(
+          { error: "Cannot transfer products to a brand that is being deleted" },
+          { status: 400 }
+        );
+      }
+      const { data: targetBrand } = await safeQuery(
+        async () => supabase.from("brands").select("id").eq("id", transfer_to).single(),
+        { data: null } as any
+      );
+      if (!targetBrand) {
+        return Response.json({ error: "Transfer target brand not found" }, { status: 400 });
+      }
+      const { error: transferError } = await supabase
+        .from("products")
+        .update({ brand_id: transfer_to })
+        .in("brand_id", blockedIds);
+      if (transferError) {
+        return Response.json({ error: transferError.message }, { status: 500 });
+      }
+    } else {
+      // No transfer target — block and report which brands are in use, with counts
+      const counts = new Map<string, number>();
+      (products || []).forEach((p) => counts.set(p.brand_id, (counts.get(p.brand_id) || 0) + 1));
+      const { data: blockedBrands } = await safeQuery(
+        async () =>
+          supabase
+            .from("brands")
+            .select("id, name")
+            .in("id", blockedIds),
+        { data: null } as any
+      );
+      const detail = (blockedBrands || []).map((b) => ({ name: b.name, count: counts.get(b.id) || 0 }));
+      return Response.json(
+        {
+          error: "Some brands are used by products and cannot be deleted",
+          blocked: detail,
+          requiresTransfer: true,
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const { error } = await supabase.from("brands").delete().in("id", ids);

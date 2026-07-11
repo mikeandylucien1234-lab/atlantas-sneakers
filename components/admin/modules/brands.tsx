@@ -8,7 +8,7 @@ import {
   Download, RefreshCw, X, ChevronDown, ChevronUp,
   CheckCircle2, EyeOff, Star, TrendingUp, ImageIcon, DollarSign,
   Loader2, Package, SlidersHorizontal, ArrowUpDown, Tag,
-  AlertTriangle, XCircle, Globe, ShieldCheck
+  AlertTriangle, XCircle, Globe, ShieldCheck, Upload, ArrowRightLeft
 } from "lucide-react";
 import type { Brand, Product, Category } from "@/types";
 
@@ -77,7 +77,13 @@ export function AdminBrands({ dark }: Props) {
   const [formSlug, setFormSlug] = useState("");
   const [formLogoUrl, setFormLogoUrl] = useState("");
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formMetaTitle, setFormMetaTitle] = useState("");
+  const [formMetaDescription, setFormMetaDescription] = useState("");
+  const [formSlugEdited, setFormSlugEdited] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
+  // Delete-with-transfer state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; blocked?: { name: string; count: number }[] } | null>(null);
+  const [transferTo, setTransferTo] = useState("");
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const showToast = useCallback((message: string, type: "success" | "error" | "info" = "success") => {
@@ -139,6 +145,7 @@ export function AdminBrands({ dark }: Props) {
   const openCreate = () => {
     setEditBrand(null);
     setFormName(""); setFormSlug(""); setFormLogoUrl(""); setFormIsActive(true);
+    setFormMetaTitle(""); setFormMetaDescription(""); setFormSlugEdited(false);
     setFormOpen(true);
   };
 
@@ -148,31 +155,50 @@ export function AdminBrands({ dark }: Props) {
     setFormSlug(brand.slug);
     setFormLogoUrl(brand.logo_url || "");
     setFormIsActive(brand.is_active);
+    const b = brand as Record<string, unknown>;
+    setFormMetaTitle((b.meta_title as string) || "");
+    setFormMetaDescription((b.meta_description as string) || "");
+    setFormSlugEdited(true);
     setFormOpen(true);
   };
 
   const handleSave = async () => {
-    if (!formName) return;
+    if (!formName.trim()) { showToast("Brand name is required", "error"); return; }
     setFormSaving(true);
     try {
-      const slug = formSlug || formName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-      const payload = { name: formName, slug, logo_url: formLogoUrl || null, is_active: formIsActive };
+      const slug = (formSlug || formName).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const payload = {
+        name: formName.trim(), slug, logo_url: formLogoUrl || null, is_active: formIsActive,
+        meta_title: formMetaTitle || null, meta_description: formMetaDescription || null,
+      };
 
-      if (editBrand) {
-        const res = await fetch("/api/admin/brands", {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: editBrand.id, ...payload }),
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Update failed"); }
-        showToast("Brand updated");
-      } else {
-        const res = await fetch("/api/admin/brands", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Create failed"); }
-        showToast("Brand created");
-      }
+      const viaApi = async () => {
+        const method = editBrand ? "PUT" : "POST";
+        const body = editBrand ? { id: editBrand.id, ...payload } : payload;
+        const res = await fetch("/api/admin/brands", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const text = await res.text();
+        let d: Record<string, unknown> = {};
+        try { d = text ? JSON.parse(text) : {}; } catch { const e = new Error("nonjson") as Error & { nonJson?: boolean }; e.nonJson = true; throw e; }
+        if (!res.ok) throw new Error((d.error as string) || "Save failed");
+      };
+
+      const viaSupabase = async () => {
+        const supabase = createClient();
+        if (editBrand) {
+          const { error } = await supabase.from("brands").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", editBrand.id);
+          if (error) throw new Error(error.message);
+        } else {
+          const { data: dup } = await supabase.from("brands").select("id").eq("slug", slug).maybeSingle();
+          const finalSlug = dup ? `${slug}-${Date.now().toString(36).slice(-4)}` : slug;
+          const { error } = await supabase.from("brands").insert({ ...payload, slug: finalSlug });
+          if (error) throw new Error(error.message);
+        }
+      };
+
+      try { await viaApi(); }
+      catch (e) { if ((e as { nonJson?: boolean }).nonJson) await viaSupabase(); else throw e; }
+
+      showToast(editBrand ? "Brand updated" : "Brand created");
       setFormOpen(false);
       fetchBrands(); fetchKpis();
     } catch (e: unknown) {
@@ -180,15 +206,37 @@ export function AdminBrands({ dark }: Props) {
     } finally { setFormSaving(false); }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this brand?")) return;
+  const handleDelete = async (id: string, name: string) => {
+    // First attempt without transfer — the API tells us if products block it
     try {
       const res = await fetch("/api/admin/brands", {
         method: "DELETE", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [id] }),
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Delete failed"); }
-      showToast("Brand deleted");
+      const d = await res.json();
+      if (res.ok) { showToast("Brand deleted"); fetchBrands(); fetchKpis(); return; }
+      if (d.requiresTransfer) {
+        // Open the transfer dialog instead of failing
+        setTransferTo("");
+        setDeleteTarget({ id, name, blocked: d.blocked });
+        return;
+      }
+      throw new Error(d.error || "Delete failed");
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : "Delete failed", "error"); }
+  };
+
+  const confirmDelete = async (transfer: boolean) => {
+    if (!deleteTarget) return;
+    if (transfer && !transferTo) { showToast("Choose a brand to transfer products to", "error"); return; }
+    try {
+      const res = await fetch("/api/admin/brands", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [deleteTarget.id], ...(transfer ? { transfer_to: transferTo } : {}) }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Delete failed");
+      showToast(transfer ? "Products transferred and brand deleted" : "Brand deleted");
+      setDeleteTarget(null);
       fetchBrands(); fetchKpis();
     } catch (e: unknown) { showToast(e instanceof Error ? e.message : "Delete failed", "error"); }
   };
@@ -451,7 +499,7 @@ export function AdminBrands({ dark }: Props) {
                           <button onClick={() => openDetail(brand)} title="View" className="p-1.5 rounded-lg hover:bg-[#2563eb]/10 text-[#2563eb] transition-colors"><Eye className="w-4 h-4" /></button>
                           <button onClick={() => openEdit(brand)} title="Edit" className="p-1.5 rounded-lg hover:bg-[#2563eb]/10 text-[#2563eb] transition-colors"><Edit3 className="w-4 h-4" /></button>
                           <button onClick={() => handleDuplicate(brand)} title="Duplicate" className={cn("p-1.5 rounded-lg transition-colors", dark ? "hover:bg-white/10 text-[#8b95a3]" : "hover:bg-black/5 text-[#8a929c]")}><Copy className="w-4 h-4" /></button>
-                          <button onClick={() => handleDelete(brand.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-[#ef4444]/10 text-[#ef4444] transition-colors"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDelete(brand.id, brand.name)} title="Delete" className="p-1.5 rounded-lg hover:bg-[#ef4444]/10 text-[#ef4444] transition-colors"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -501,33 +549,60 @@ export function AdminBrands({ dark }: Props) {
                 </p>
               </div>
               <div>
-                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Brand Name *</label>
-                <input value={formName} onChange={e => { setFormName(e.target.value); if (!editBrand) setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")); }} className={inpCls} placeholder="Brand name" />
+                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Brand Name <span className="text-red-500">*</span></label>
+                <input value={formName} onChange={e => { setFormName(e.target.value); if (!formSlugEdited) setFormSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")); }} className={cn(inpCls, !formName.trim() && "border-red-500/40")} placeholder="e.g. Atlanta Originals" />
+                {!formName.trim() && <p className="text-[11px] text-red-500 mt-1">Brand name is required</p>}
               </div>
               <div>
                 <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Slug</label>
-                <input value={formSlug} onChange={e => setFormSlug(e.target.value)} className={inpCls} placeholder="brand-name" />
+                <input value={formSlug} onChange={e => { setFormSlugEdited(true); setFormSlug(e.target.value); }} className={inpCls} placeholder="brand-name" />
               </div>
               <div>
-                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Logo URL</label>
-                <input value={formLogoUrl} onChange={e => setFormLogoUrl(e.target.value)} className={inpCls} placeholder="https://..." />
-                {formLogoUrl && (
-                  <div className={cn("mt-2 w-20 h-20 rounded-[10px] overflow-hidden border flex items-center justify-center", brd, dark ? "bg-[#1d242e]" : "bg-[#f6f8fb]")}>
-                    <img src={formLogoUrl} alt="" className="max-w-full max-h-full object-contain p-2" onError={e => (e.currentTarget.style.display = "none")} />
-                  </div>
-                )}
+                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Brand Logo</label>
+                <BrandLogoUpload dark={dark} value={formLogoUrl} onChange={setFormLogoUrl} />
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={formIsActive} onChange={e => setFormIsActive(e.target.checked)} className="rounded" />
-                <span className={cn("text-sm font-semibold", txt)}>Active (visible on storefront)</span>
-              </label>
+
+              {/* SEO */}
+              <div className={cn("rounded-[12px] border p-4 space-y-4", brd, dark ? "bg-[#1d242e]/40" : "bg-[#f6f8fb]")}>
+                <div className="flex items-center gap-2">
+                  <Search className="w-4 h-4 text-[#2563eb]" />
+                  <p className={cn("text-[13px] font-extrabold", txt)}>SEO</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className={cn("text-[12px] font-semibold", txt)}>Meta Title</label>
+                    <span className={cn("text-[11px]", formMetaTitle.length > 60 ? "text-amber-500" : sub)}>{formMetaTitle.length}/60</span>
+                  </div>
+                  <input value={formMetaTitle} onChange={e => setFormMetaTitle(e.target.value)} className={inpCls} placeholder={formName || "Brand title for search engines"} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className={cn("text-[12px] font-semibold", txt)}>Meta Description</label>
+                    <span className={cn("text-[11px]", formMetaDescription.length > 160 ? "text-amber-500" : sub)}>{formMetaDescription.length}/160</span>
+                  </div>
+                  <textarea value={formMetaDescription} onChange={e => setFormMetaDescription(e.target.value)} rows={3} className={cn("w-full rounded-[11px] border-[1.5px] p-3 text-sm outline-none resize-y", inp, "focus:border-[#2563eb]")} placeholder="Brief description shown in search results and on the brand page..." />
+                </div>
+              </div>
+
+              <div>
+                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Status</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[["Active", true], ["Inactive", false]].map(([lbl, val]) => (
+                    <button key={lbl as string} type="button" onClick={() => setFormIsActive(val as boolean)}
+                      className={cn("h-[42px] rounded-[11px] border-[1.5px] text-[13px] font-semibold transition-colors",
+                        formIsActive === val ? (val ? "border-emerald-500 bg-emerald-500/5 text-emerald-600" : "border-[#8a929c] bg-[#8a929c]/5 " + txt) : cn(brd, sub, hover))}>
+                      {lbl as string}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className={cn("px-6 py-4 border-t shrink-0", brd)}>
               <div className="flex gap-3">
                 <button onClick={() => setFormOpen(false)} className={cn("flex-1 h-[44px] rounded-[11px] border text-sm font-semibold", brd, txt, hover)}>Cancel</button>
-                <button onClick={handleSave} disabled={formSaving || !formName} className="flex-1 h-[44px] rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                <button onClick={handleSave} disabled={formSaving || !formName.trim()} className="flex-1 h-[44px] rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                   {formSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {formSaving ? "Saving..." : editBrand ? "Update" : "Create"}
+                  {formSaving ? "Saving..." : editBrand ? "Update Brand" : "Create Brand"}
                 </button>
               </div>
             </div>
@@ -576,12 +651,126 @@ export function AdminBrands({ dark }: Props) {
         </div>
       )}
 
+      {/* DELETE / TRANSFER MODAL */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 animate-in fade-in duration-200" onClick={() => setDeleteTarget(null)} />
+          <div className={cn("relative w-full max-w-md rounded-[16px] border shadow-2xl animate-in zoom-in-95 duration-200", dark ? "bg-[#171c24] border-[#252c36]" : "bg-white border-[#eef0f3]")}>
+            <div className="p-6">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                </div>
+                <div className="flex-1">
+                  <h3 className={cn("text-[16px] font-extrabold", txt)}>“{deleteTarget.name}” is in use</h3>
+                  <p className={cn("text-[13px] mt-1", sub)}>
+                    This brand is used by {(deleteTarget.blocked || []).reduce((s, b) => s + b.count, 0)} product(s). To delete it, transfer its products to another brand first — or cancel.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <label className={cn("text-[12px] font-semibold mb-1.5 block", txt)}>Transfer products to</label>
+                <select value={transferTo} onChange={e => setTransferTo(e.target.value)} className={inpCls}>
+                  <option value="">Select a brand…</option>
+                  {brands.filter(b => b.id !== deleteTarget.id).map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setDeleteTarget(null)} className={cn("flex-1 h-[42px] rounded-[11px] border text-sm font-semibold", brd, txt, hover)}>Cancel</button>
+                <button onClick={() => confirmDelete(true)} disabled={!transferTo} className="flex-1 h-[42px] rounded-[11px] bg-[#2563eb] text-white text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+                  <ArrowRightLeft className="w-4 h-4" /> Transfer & Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TOAST */}
       {toast && (
         <div className={cn("fixed bottom-6 right-6 z-[100] px-4 py-3 rounded-[12px] text-sm font-semibold text-white shadow-lg animate-in slide-in-from-bottom-2 duration-200",
           toast.type === "success" && "bg-[#16a34a]", toast.type === "error" && "bg-[#ef4444]", toast.type === "info" && "bg-[#2563eb]"
         )}>{toast.message}</div>
       )}
+    </div>
+  );
+}
+
+const BRAND_IMG_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/svg+xml"];
+const BRAND_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/svg+xml": "svg" };
+
+function BrandLogoUpload({ dark, value, onChange }: { dark: boolean; value: string; onChange: (v: string) => void }) {
+  const sub = dark ? "text-[#8b95a3]" : "text-[#8a929c]";
+  const txt = dark ? "text-[#e7ebf0]" : "text-[#16181d]";
+  const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
+  const surface = dark ? "bg-[#1d242e]" : "bg-[#f6f8fb]";
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState("");
+
+  const upload = async (file: File) => {
+    setError("");
+    if (!BRAND_IMG_TYPES.includes(file.type)) { setError("Use JPG, PNG, WebP, GIF, AVIF or SVG"); return; }
+    if (file.size > 5 * 1024 * 1024) { setError("Logo exceeds 5MB"); return; }
+    setUploading(true);
+    try {
+      const supabase = createClient();
+      const ext = BRAND_EXT[file.type] || "bin";
+      const path = `brands/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("brand-images").upload(path, file, { contentType: file.type, upsert: false });
+      if (upErr) {
+        const fd = new FormData();
+        fd.append("files", file); fd.append("bucket", "brand-images"); fd.append("folder", "brands");
+        const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.files?.[0]?.url) throw new Error(d.error || upErr.message || "Upload failed");
+        onChange(d.files[0].url);
+      } else {
+        const { data: pub } = supabase.storage.from("brand-images").getPublicUrl(path);
+        onChange(pub.publicUrl);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div>
+      <input ref={fileRef} type="file" accept={BRAND_IMG_TYPES.join(",")} className="hidden" onChange={e => e.target.files?.[0] && upload(e.target.files[0])} />
+      {value ? (
+        <div className={cn("relative rounded-[12px] border overflow-hidden group flex items-center justify-center h-36", brd, surface)}>
+          <img src={value} alt="" className="max-w-full max-h-full object-contain p-3" onError={e => (e.currentTarget.style.opacity = "0.3")} />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="px-3 h-8 rounded-[8px] bg-white text-black text-[11px] font-bold flex items-center gap-1">
+              {uploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Replace
+            </button>
+            <button type="button" onClick={() => onChange("")} className="px-3 h-8 rounded-[8px] bg-red-500 text-white text-[11px] font-bold flex items-center gap-1">
+              <Trash2 className="w-3 h-3" /> Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+          onDrop={e => { e.preventDefault(); setDragOver(false); if (!uploading && e.dataTransfer.files?.[0]) upload(e.dataTransfer.files[0]); }}
+          className={cn("rounded-[12px] border-2 border-dashed h-36 flex flex-col items-center justify-center gap-1.5 text-center cursor-pointer transition-colors px-4",
+            dragOver ? "border-[#2563eb] bg-[#2563eb]/5" : brd, uploading && "opacity-60 pointer-events-none")}>
+          {uploading ? <Loader2 className="w-7 h-7 animate-spin text-[#2563eb]" /> : <Upload className={cn("w-7 h-7", dragOver ? "text-[#2563eb]" : sub)} />}
+          <p className={cn("text-[13px] font-semibold", txt)}>{uploading ? "Uploading…" : "Click to choose a logo or drag & drop"}</p>
+          <p className={cn("text-[11px]", sub)}>PNG, JPG, WebP or SVG — up to 5MB. Transparent PNG recommended.</p>
+        </div>
+      )}
+      {error && <p className="text-[11px] text-red-500 mt-1">{error}</p>}
     </div>
   );
 }

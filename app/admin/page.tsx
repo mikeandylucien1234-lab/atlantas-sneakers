@@ -38,6 +38,8 @@ import { AdminAnalytics } from "@/components/admin/modules/ganalytics";
 import { AdminTikTok } from "@/components/admin/modules/tiktok";
 import { AdminSearchConsole } from "@/components/admin/modules/search-console";
 import { AdminNotifications } from "@/components/admin/modules/notifications";
+import { AdminRoles } from "@/components/admin/modules/roles";
+import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -75,7 +77,6 @@ const settingsModules = new Set([
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
   staff: { table: "profiles", columns: ["full_name", "email", "role"] },
-  roles: { table: "profiles", columns: ["role"] },
   loginhistory: { table: "profiles", columns: ["email", "created_at"] },
   audit: { table: "profiles", columns: ["email", "created_at"] },
   activity: { table: "profiles", columns: ["email", "created_at"] },
@@ -182,6 +183,8 @@ export default function AdminPage() {
         return <AdminSearchConsole dark={dark} />;
       case "notifications":
         return <AdminNotifications dark={dark} />;
+      case "roles":
+        return <AdminRoles dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":
@@ -204,6 +207,7 @@ export default function AdminPage() {
   };
 
   return (
+    <PermissionProvider>
     <AdminContext value={{ dark, toggleDark, activeModule, setActiveModule, showToast }}>
       <div className={cn("min-h-screen", dark ? "bg-[#0f1318]" : "bg-[#f4f6f9]")}>
         <AdminSidebar
@@ -237,5 +241,6 @@ export default function AdminPage() {
         )}
       </div>
     </AdminContext>
+    </PermissionProvider>
   );
 }

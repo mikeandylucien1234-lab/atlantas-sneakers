@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { recordLoginEvent } from "@/lib/login-history/client";
 
 export function AuthListener() {
   const setUser = useAuthStore((s) => s.setUser);
@@ -26,10 +27,21 @@ export function AuthListener() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setUser(session?.user ?? null);
-        if (session?.user) fetchProfile(session.user.id);
-        else setProfile(null);
+        if (session?.user) {
+          fetchProfile(session.user.id);
+          // Record a successful login once per browser session (covers email,
+          // OAuth and magic-link flows). Server binds it to the auth session.
+          if (event === "SIGNED_IN" && typeof sessionStorage !== "undefined" && !sessionStorage.getItem("atl_login_recorded")) {
+            sessionStorage.setItem("atl_login_recorded", "1");
+            const method = sessionStorage.getItem("atl_login_method") || "email";
+            recordLoginEvent("success", method);
+          }
+        } else {
+          setProfile(null);
+          try { sessionStorage.removeItem("atl_login_recorded"); } catch {}
+        }
       }
     );
 

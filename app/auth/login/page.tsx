@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { recordLoginEvent } from "@/lib/login-history/client";
 
 export default function LoginPage() {
   return (
@@ -33,10 +34,13 @@ function LoginForm() {
       const supabase = createClient();
       const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
       if (err) {
+        // Record the failed attempt (server captures IP/UA/geo, raises alerts).
+        recordLoginEvent("password_incorrect", "email", email);
         setError(err);
         setLoading(false);
         return;
       }
+      try { sessionStorage.setItem("atl_login_method", "email"); } catch {}
       const user = data?.user;
       if (user) {
         if (user.app_metadata?.role === "admin") {

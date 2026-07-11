@@ -43,6 +43,7 @@ import { AdminStaff } from "@/components/admin/modules/staff";
 import { AdminSecurity } from "@/components/admin/modules/security";
 import { AdminLoginHistory } from "@/components/admin/modules/login-history";
 import { AdminAudit } from "@/components/admin/modules/audit";
+import { AdminActivity } from "@/components/admin/modules/activity";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -80,7 +81,6 @@ const settingsModules = new Set([
 ]);
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
-  activity: { table: "profiles", columns: ["email", "created_at"] },
   apikeys: { table: "profiles", columns: ["email", "created_at"] },
 };
 
@@ -194,6 +194,8 @@ export default function AdminPage() {
         return <AdminLoginHistory dark={dark} />;
       case "audit":
         return <AdminAudit dark={dark} />;
+      case "activity":
+        return <AdminActivity dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

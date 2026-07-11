@@ -40,6 +40,7 @@ import { AdminSearchConsole } from "@/components/admin/modules/search-console";
 import { AdminNotifications } from "@/components/admin/modules/notifications";
 import { AdminRoles } from "@/components/admin/modules/roles";
 import { AdminStaff } from "@/components/admin/modules/staff";
+import { AdminSecurity } from "@/components/admin/modules/security";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -72,7 +73,7 @@ const moduleLabel = (id: string) => {
 };
 
 const settingsModules = new Set([
-  "metapixel", "security",
+  "metapixel",
   "health", "emails",
 ]);
 
@@ -187,6 +188,8 @@ export default function AdminPage() {
         return <AdminRoles dark={dark} />;
       case "staff":
         return <AdminStaff dark={dark} />;
+      case "security":
+        return <AdminSecurity dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

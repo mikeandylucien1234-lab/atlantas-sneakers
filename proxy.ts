@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
+import { applySecurityHeaders } from "@/lib/security/headers";
+import { clientIp, isIpBlocked } from "@/lib/security/guard";
 
 const protectedPaths = ["/account", "/checkout"];
 const authPaths = ["/auth/login", "/auth/register", "/auth/forgot-password"];
@@ -11,6 +13,14 @@ const SKIP_REDIRECT = /^\/(?:_next|api|admin|favicon|robots\.txt|sitemap\.xml|.*
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // 0) IP blocklist enforcement (cached; enforced at the edge). Never crash on error.
+  try {
+    const ip = clientIp(request);
+    if (ip && (await isIpBlocked(ip))) {
+      return applySecurityHeaders(new NextResponse("Forbidden", { status: 403 }));
+    }
+  } catch { /* fail-open on lookup error, headers still applied below */ }
 
   // 1) SEO redirect manager (301/302/307/410) — applied before anything else
   if (!SKIP_REDIRECT.test(pathname)) {
@@ -46,7 +56,7 @@ export async function proxy(request: NextRequest) {
   const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
   const isAuthPage = authPaths.some((p) => pathname.startsWith(p));
   if (!isProtected && !isAuthPage) {
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
   }
 
   const response = NextResponse.next({
@@ -85,7 +95,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  return response;
+  return applySecurityHeaders(response);
 }
 
 export const config = {

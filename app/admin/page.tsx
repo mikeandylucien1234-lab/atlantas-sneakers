@@ -37,6 +37,7 @@ import { AdminSeo } from "@/components/admin/modules/seo";
 import { AdminAnalytics } from "@/components/admin/modules/ganalytics";
 import { AdminTikTok } from "@/components/admin/modules/tiktok";
 import { AdminSearchConsole } from "@/components/admin/modules/search-console";
+import { AdminNotifications } from "@/components/admin/modules/notifications";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
@@ -68,7 +69,7 @@ const moduleLabel = (id: string) => {
 };
 
 const settingsModules = new Set([
-  "metapixel", "notifications", "security",
+  "metapixel", "security",
   "health", "emails",
 ]);
 
@@ -179,6 +180,8 @@ export default function AdminPage() {
         return <AdminTikTok dark={dark} />;
       case "gsc":
         return <AdminSearchConsole dark={dark} />;
+      case "notifications":
+        return <AdminNotifications dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

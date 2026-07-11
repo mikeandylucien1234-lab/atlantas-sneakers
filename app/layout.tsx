@@ -8,7 +8,9 @@ import { BottomNav } from "@/components/layout/bottom-nav";
 import { ToastProvider } from "@/components/ui/toast";
 import { AuthListener } from "@/components/auth-listener";
 import { AnalyticsTracker } from "@/components/analytics/analytics-tracker";
+import { TikTokPixel } from "@/components/analytics/tiktok-pixel";
 import { getSeoSettings, buildRootMetadata } from "@/lib/seo/seo-settings";
+import { getTikTokSettings } from "@/lib/tiktok/settings";
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-sans",
@@ -28,6 +30,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const seo = await getSeoSettings();
+  const tiktok = await getTikTokSettings();
   const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, "");
   const siteName = seo?.site_name || "Atlanta Sneakers";
 
@@ -76,6 +79,7 @@ export default async function RootLayout({
         <ToastProvider>
           <AuthListener />
           <AnalyticsTracker />
+          {tiktok?.pixel_id && <TikTokPixel pixelId={tiktok.pixel_id} events={tiktok.pixel_events} />}
           <AnnouncementBar />
           <Header />
           <main className="flex-1">

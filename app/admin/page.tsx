@@ -45,6 +45,7 @@ import { AdminLoginHistory } from "@/components/admin/modules/login-history";
 import { AdminAudit } from "@/components/admin/modules/audit";
 import { AdminActivity } from "@/components/admin/modules/activity";
 import { AdminApiKeys } from "@/components/admin/modules/api-keys";
+import { AdminHealth } from "@/components/admin/modules/health";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,7 +79,7 @@ const moduleLabel = (id: string) => {
 
 const settingsModules = new Set([
   "metapixel",
-  "health", "emails",
+  "emails",
 ]);
 
 const tableModules: Record<string, { table: string; columns: string[] }> = {
@@ -198,6 +199,8 @@ export default function AdminPage() {
         return <AdminActivity dark={dark} />;
       case "apikeys":
         return <AdminApiKeys dark={dark} />;
+      case "health":
+        return <AdminHealth dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

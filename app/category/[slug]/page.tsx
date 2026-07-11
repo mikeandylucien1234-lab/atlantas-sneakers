@@ -7,6 +7,8 @@ import { ProductCard } from "@/components/ui/product-card";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
 import { getProductsByCategory, getCategories } from "@/lib/supabase/queries";
 import { useQuery } from "@/lib/hooks/use-query";
+import { JsonLd } from "@/components/seo/json-ld";
+import { buildCollectionSchema, buildBreadcrumb } from "@/lib/seo/structured-data";
 
 const categoryMeta: Record<string, { gradient: string; description: string }> = {
   men: { gradient: "linear-gradient(135deg, #dbe7fb 0%, #eef2fc 100%)", description: "Discover our latest men's sneakers, from classic silhouettes to cutting-edge designs." },
@@ -30,6 +32,10 @@ export default function CategoryPage() {
 
   return (
     <div className="mt-4">
+      <JsonLd data={[
+        buildCollectionSchema({ name: title, slug, kind: "category", description: (currentCategory as { meta_description?: string })?.meta_description ?? meta.description }),
+        buildBreadcrumb([{ name: "Home", url: "/" }, { name: title, url: `/category/${slug}` }]),
+      ]} />
       <div className="flex items-center gap-1.5 text-[13px] text-[#9aa3ad] mb-4">
         <Link href="/" className="hover:text-[#2563eb] transition-colors">Home</Link>
         <span>/</span>

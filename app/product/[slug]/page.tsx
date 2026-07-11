@@ -17,6 +17,8 @@ import { useCartStore } from "@/lib/store/cart-store";
 import { useWishlistStore } from "@/lib/store/wishlist-store";
 import { getProductBySlug, getRelatedProducts } from "@/lib/supabase/queries";
 import { useQuery } from "@/lib/hooks/use-query";
+import { JsonLd } from "@/components/seo/json-ld";
+import { buildProductSchema, buildBreadcrumb } from "@/lib/seo/structured-data";
 
 type AccordionItemProps = { title: string; children: React.ReactNode; defaultOpen?: boolean };
 
@@ -119,6 +121,26 @@ export default function ProductPage() {
 
   return (
     <div className="mt-4">
+      <JsonLd data={[
+        buildProductSchema({
+          name: product.name,
+          slug: product.slug,
+          description: product.description,
+          price: Number(product.price),
+          compare_price: product.compare_price ? Number(product.compare_price) : null,
+          images: product.images,
+          brand: product.brand,
+          sku: (product as { sku?: string }).sku ?? null,
+          status: product.status,
+          averageRating: (product as { averageRating?: number }).averageRating,
+          reviewCount: (product as { reviewCount?: number }).reviewCount,
+        }),
+        buildBreadcrumb([
+          { name: "Home", url: "/" },
+          { name: "Shop", url: "/shop" },
+          { name: product.name, url: `/product/${product.slug}` },
+        ]),
+      ]} />
       <div className="flex items-center gap-1.5 text-[13px] text-[#9aa3ad] mb-5">
         <Link href="/" className="hover:text-[#2563eb] transition-colors">Home</Link>
         <span>/</span>

@@ -7,6 +7,7 @@ import { Footer } from "@/components/layout/footer";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { ToastProvider } from "@/components/ui/toast";
 import { AuthListener } from "@/components/auth-listener";
+import { AnalyticsTracker } from "@/components/analytics/analytics-tracker";
 import { getSeoSettings, buildRootMetadata } from "@/lib/seo/seo-settings";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -74,6 +75,7 @@ export default async function RootLayout({
         )}
         <ToastProvider>
           <AuthListener />
+          <AnalyticsTracker />
           <AnnouncementBar />
           <Header />
           <main className="flex-1">

@@ -60,6 +60,17 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   for (let i = 0; i < images.length; i++) {
     await s.from("supplier_images").insert({ supplier_product_id: sp?.id || null, source_url: images[i], stored_url: images[i], position: i }).then(() => {}, () => {});
   }
+  // Warranty Management: attach the CJ default warranty (if one is configured)
+  // to every product imported from a supplier. Best-effort — never blocks import.
+  try {
+    const { data: cjWarranty } = await s.from("warranties").select("id").eq("cj_default", true).eq("status", "active").limit(1).maybeSingle();
+    if (cjWarranty?.id) {
+      await s.from("warranty_products").upsert(
+        { warranty_id: cjWarranty.id, product_id: product.id, source: "cj" },
+        { onConflict: "warranty_id,product_id", ignoreDuplicates: true }
+      );
+    }
+  } catch {}
   // Upsert the supplier_products cache and mark imported
   await s.from("supplier_products").upsert({
     supplier_id: supplierId, external_id: externalId, name: detail.name, description: detail.description,

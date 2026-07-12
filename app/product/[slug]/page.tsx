@@ -18,6 +18,7 @@ import { useWishlistStore } from "@/lib/store/wishlist-store";
 import { getProductBySlug, getRelatedProducts } from "@/lib/supabase/queries";
 import { useQuery } from "@/lib/hooks/use-query";
 import { JsonLd } from "@/components/seo/json-ld";
+import { ProductWarranty } from "@/components/product/product-warranty";
 import { buildProductSchema, buildBreadcrumb } from "@/lib/seo/structured-data";
 
 type AccordionItemProps = { title: string; children: React.ReactNode; defaultOpen?: boolean };
@@ -279,6 +280,9 @@ export default function ProductPage() {
               Easy Returns
             </div>
           </div>
+
+          {/* Warranty */}
+          <ProductWarranty productId={product.id} />
         </div>
       </div>
 

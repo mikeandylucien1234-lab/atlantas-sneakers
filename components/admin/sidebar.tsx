@@ -11,6 +11,7 @@ import {
   Warehouse,
   Tag,
   Ruler,
+  ShieldCheck,
   Zap,
   Users,
   Star,
@@ -118,6 +119,7 @@ const navGroups: NavGroup[] = [
       { id: "suppliers", label: "Supplier Center", icon: Warehouse },
       { id: "attributes", label: "Attributes", icon: Tag },
       { id: "sizes", label: "Size Management", icon: Ruler },
+      { id: "warranties", label: "Warranty", icon: ShieldCheck },
     ],
   },
   {

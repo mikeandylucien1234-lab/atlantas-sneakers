@@ -49,6 +49,7 @@ import { AdminHealth } from "@/components/admin/modules/health";
 import { AdminSettingsCenter } from "@/components/admin/modules/settings-center";
 import { AdminSuppliers } from "@/components/admin/modules/suppliers";
 import { AdminAttributes } from "@/components/admin/modules/attributes";
+import { AdminSizes } from "@/components/admin/modules/sizes";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -208,6 +209,8 @@ export default function AdminPage() {
         return <AdminSuppliers dark={dark} />;
       case "attributes":
         return <AdminAttributes dark={dark} />;
+      case "sizes":
+        return <AdminSizes dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

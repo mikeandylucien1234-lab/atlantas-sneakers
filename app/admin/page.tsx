@@ -46,6 +46,7 @@ import { AdminAudit } from "@/components/admin/modules/audit";
 import { AdminActivity } from "@/components/admin/modules/activity";
 import { AdminApiKeys } from "@/components/admin/modules/api-keys";
 import { AdminHealth } from "@/components/admin/modules/health";
+import { AdminSettingsCenter } from "@/components/admin/modules/settings-center";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -132,7 +133,7 @@ export default function AdminPage() {
       case "backup":
         return <AdminBackup dark={dark} />;
       case "settings":
-        return <AdminSettings dark={dark} />;
+        return <AdminSettingsCenter dark={dark} />;
       case "integrations":
         return <AdminIntegrations dark={dark} />;
       case "paymentsmgmt":

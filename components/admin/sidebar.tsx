@@ -9,6 +9,7 @@ import {
   Grid3x3,
   Award,
   Warehouse,
+  Tag,
   Zap,
   Users,
   Star,
@@ -114,6 +115,7 @@ const navGroups: NavGroup[] = [
     label: "Sourcing",
     items: [
       { id: "suppliers", label: "Supplier Center", icon: Warehouse },
+      { id: "attributes", label: "Attributes", icon: Tag },
     ],
   },
   {

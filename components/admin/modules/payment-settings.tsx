@@ -5,6 +5,21 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { Drawer } from "@/components/ui/drawer";
+
+// Returns a browser Supabase client with its auth session guaranteed to be
+// loaded, so direct-DB fallback writes carry the admin's JWT (otherwise the
+// request runs anonymously and RLS rejects it with
+// "new row violates row-level security policy"). Throws a clear error if the
+// admin session isn't available so the user is told to re-login instead of
+// hitting a cryptic RLS message.
+async function authedClient() {
+  const supabase = createClient();
+  const { data } = await supabase.auth.getSession();
+  if (!data?.session) {
+    throw new Error("Your admin session has expired. Please refresh the page and sign in again, then retry.");
+  }
+  return supabase;
+}
 import {
   CreditCard, Smartphone, Banknote, Landmark, Loader2, RefreshCw,
   CheckCircle2, XCircle, Copy, ShieldCheck, AlertTriangle, Save, Plus,
@@ -252,7 +267,7 @@ export function AdminPaymentSettings({ dark }: Props) {
       } catch (e) {
         if (!e.nonJson) throw e;
         // Hosting layer blocked the request — write directly via Supabase (admin RLS)
-        const supabase = createClient();
+        const supabase = await authedClient();
         const { error } = await supabase.from("payment_settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("gateway", gateway);
         if (error) throw new Error(error.message);
       }
@@ -294,7 +309,7 @@ export function AdminPaymentSettings({ dark }: Props) {
         await api("PUT", { target: "currency", code, ...patch });
       } catch (e) {
         if (!e.nonJson) throw e;
-        const supabase = createClient();
+        const supabase = await authedClient();
         if (patch.is_base === true) await supabase.from("payment_currencies").update({ is_base: false }).neq("code", code);
         if (patch.is_default === true) await supabase.from("payment_currencies").update({ is_default: false }).neq("code", code);
         const { error } = await supabase.from("payment_currencies").update({ ...patch, updated_at: new Date().toISOString() }).eq("code", code);
@@ -312,7 +327,7 @@ export function AdminPaymentSettings({ dark }: Props) {
         await api("PUT", { target: "config", key, value });
       } catch (e) {
         if (!e.nonJson) throw e;
-        const supabase = createClient();
+        const supabase = await authedClient();
         const { error } = await supabase.from("payment_config").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
         if (error) throw new Error(error.message);
       }
@@ -600,7 +615,7 @@ export function AdminPaymentSettings({ dark }: Props) {
                             <button onClick={async () => {
                               try {
                                 try { await api("DELETE", { target: "currency", code: c.code }); }
-                                catch (e) { if (!e.nonJson) throw e; const { error } = await createClient().from("payment_currencies").delete().eq("code", c.code); if (error) throw new Error(error.message); }
+                                catch (e) { if (!e.nonJson) throw e; const { error } = await (await authedClient()).from("payment_currencies").delete().eq("code", c.code); if (error) throw new Error(error.message); }
                                 load(); showToast("Removed");
                               } catch (e) { showToast(e.message, "error"); }
                             }}
@@ -660,7 +675,7 @@ export function AdminPaymentSettings({ dark }: Props) {
                     await api("POST", { action: "add_tax_rule", ...newTax, rate: parseFloat(newTax.rate) });
                   } catch (e) {
                     if (!e.nonJson) throw e;
-                    const supabase = createClient();
+                    const supabase = await authedClient();
                     const { error } = await supabase.from("payment_tax_rules").insert({
                       country: newTax.country.trim(), state: newTax.state.trim() || null, zip: newTax.zip.trim() || null,
                       tax_type: newTax.tax_type, tax_class: newTax.tax_class, rate: parseFloat(newTax.rate) || 0,
@@ -686,12 +701,12 @@ export function AdminPaymentSettings({ dark }: Props) {
                     <div className="flex-1" />
                     <Toggle on={r.enabled} onChange={async () => {
                       try { await api("PUT", { target: "tax_rule", id: r.id, enabled: !r.enabled }); }
-                      catch (e) { if (!e.nonJson) { showToast(e.message, "error"); return; } await createClient().from("payment_tax_rules").update({ enabled: !r.enabled }).eq("id", r.id); }
+                      catch (e) { if (!e.nonJson) { showToast(e.message, "error"); return; } await (await authedClient()).from("payment_tax_rules").update({ enabled: !r.enabled }).eq("id", r.id); }
                       load();
                     }} />
                     <button onClick={async () => {
                       try { await api("DELETE", { target: "tax_rule", id: r.id }); }
-                      catch (e) { if (!e.nonJson) { showToast(e.message, "error"); return; } await createClient().from("payment_tax_rules").delete().eq("id", r.id); }
+                      catch (e) { if (!e.nonJson) { showToast(e.message, "error"); return; } await (await authedClient()).from("payment_tax_rules").delete().eq("id", r.id); }
                       load(); showToast("Removed");
                     }} className="w-7 h-7 rounded-[8px] flex items-center justify-center hover:bg-red-500/10"><Trash2 className="w-3.5 h-3.5 text-red-500" /></button>
                   </div>
@@ -1064,7 +1079,7 @@ export function AdminPaymentSettings({ dark }: Props) {
                       <button onClick={async () => {
                         try {
                           try { await api("DELETE", { target: "gateway", gateway: openGw.gateway }); }
-                          catch (e) { if (!e.nonJson) throw e; const { error } = await createClient().from("payment_settings").delete().eq("gateway", openGw.gateway).eq("is_custom", true); if (error) throw new Error(error.message); }
+                          catch (e) { if (!e.nonJson) throw e; const { error } = await (await authedClient()).from("payment_settings").delete().eq("gateway", openGw.gateway).eq("is_custom", true); if (error) throw new Error(error.message); }
                           setOpenGateway(null); load(); showToast("Gateway removed");
                         } catch (e) { showToast(e.message, "error"); }
                       }}
@@ -1133,7 +1148,7 @@ export function AdminPaymentSettings({ dark }: Props) {
                 await api("POST", { action: "add_currency", ...newCur, rate: parseFloat(newCur.rate) || 1 });
               } catch (e) {
                 if (!e.nonJson) throw e;
-                const { error } = await createClient().from("payment_currencies").insert({
+                const { error } = await (await authedClient()).from("payment_currencies").insert({
                   code: newCur.code.toUpperCase().slice(0, 5), name: newCur.name, symbol: newCur.symbol,
                   enabled: false, rate: parseFloat(newCur.rate) || 1,
                 });
@@ -1214,7 +1229,7 @@ function GatewayWizard({ open, onClose, dark, api, settings, envStatus, webhookU
         }
       }
       if (!createdOk) {
-        const supabase = createClient();
+        const supabase = await authedClient();
         const { error } = await supabase.from("payment_settings").insert({
           gateway: code,
           display_name: data.display_name.trim(),
@@ -1260,7 +1275,7 @@ function GatewayWizard({ open, onClose, dark, api, settings, envStatus, webhookU
         await api("PUT", { target: "gateway", gateway: created, enabled: true });
       } catch (e) {
         if (!e.nonJson) throw e;
-        const supabase = createClient();
+        const supabase = await authedClient();
         const { error } = await supabase.from("payment_settings").update({ enabled: true, updated_at: new Date().toISOString() }).eq("gateway", created);
         if (error) throw new Error(error.message);
       }

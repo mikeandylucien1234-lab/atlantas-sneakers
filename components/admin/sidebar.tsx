@@ -111,6 +111,12 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Sourcing",
+    items: [
+      { id: "suppliers", label: "Supplier Center", icon: Warehouse },
+    ],
+  },
+  {
     label: "Marketing",
     items: [
       { id: "seo", label: "SEO", icon: Search },

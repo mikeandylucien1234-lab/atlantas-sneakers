@@ -1,0 +1,111 @@
+// @ts-nocheck
+// CJ Dropshipping adapter — the first concrete SupplierAdapter. Talks to the real
+// CJ Dropshipping API v2 when credentials are present (CJ_EMAIL + CJ_API_KEY, or a
+// pre-issued CJ_ACCESS_TOKEN). Access tokens are cached in-process. With no
+// credentials every method returns an honest "not connected" result.
+import { SupplierAdapter } from "./adapter";
+
+const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
+let _token = { value: process.env.CJ_ACCESS_TOKEN || null, exp: process.env.CJ_ACCESS_TOKEN ? Date.now() + 3600_000 : 0 };
+
+async function getToken() {
+  if (_token.value && Date.now() < _token.exp) return _token.value;
+  const email = process.env.CJ_EMAIL, apiKey = process.env.CJ_API_KEY;
+  if (!email || !apiKey) return process.env.CJ_ACCESS_TOKEN || null;
+  const r = await fetch(`${BASE}/authentication/getAccessToken`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: apiKey }), signal: AbortSignal.timeout(8000),
+  });
+  const d = await r.json();
+  if (!d?.data?.accessToken) throw new Error(d?.message || "CJ auth failed");
+  _token = { value: d.data.accessToken, exp: Date.now() + 13 * 24 * 3600_000 }; // ~15d validity
+  return _token.value;
+}
+async function cj(path, { method = "GET", body, query } = {}) {
+  const token = await getToken();
+  if (!token) throw new Error("CJ credentials not configured");
+  const url = new URL(`${BASE}${path}`);
+  if (query) Object.entries(query).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
+  const r = await fetch(url, { method, headers: { "CJ-Access-Token": token, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(12000) });
+  const d = await r.json();
+  if (d && d.result === false) throw new Error(d.message || `CJ ${r.status}`);
+  return d;
+}
+
+export class CJAdapter extends SupplierAdapter {
+  constructor() { super("cj", ["CJ_API_KEY", "CJ_ACCESS_TOKEN"]); }
+  isConfigured() { return !!(process.env.CJ_ACCESS_TOKEN || (process.env.CJ_EMAIL && process.env.CJ_API_KEY)); }
+  missingEnv() { return this.isConfigured() ? [] : ["CJ_EMAIL", "CJ_API_KEY"]; }
+
+  async testConnection() {
+    if (!this.isConfigured()) return { ok: false, configured: false, message: "Set CJ_EMAIL + CJ_API_KEY (or CJ_ACCESS_TOKEN) on the server." };
+    const t = Date.now();
+    try { await getToken(); await cj("/product/list", { query: { pageNum: 1, pageSize: 1 } }); return { ok: true, configured: true, latency: Date.now() - t, message: "CJ Dropshipping API reachable & authenticated." }; }
+    catch (e) { return { ok: false, configured: true, latency: Date.now() - t, message: e.message }; }
+  }
+
+  async searchProducts({ keyword, page = 1, pageSize = 20, category, warehouse } = {}) {
+    if (!this.isConfigured()) return { ok: false, products: [], total: 0, configured: false, message: "CJ not connected — add credentials to search live products." };
+    try {
+      const d = await cj("/product/list", { query: { pageNum: page, pageSize, productNameEn: keyword || undefined, categoryId: category || undefined, countryCode: warehouse || undefined } });
+      const list = d?.data?.list || [];
+      return { ok: true, total: d?.data?.total || list.length, products: list.map(p => ({
+        external_id: p.pid, name: p.productNameEn, image: p.productImage, supplier_price: Number(p.sellPrice) || 0,
+        category_external: p.categoryName, warehouse: p.entryCode, processing_time: p.deliveryTime, raw: p,
+      })) };
+    } catch (e) { return { ok: false, products: [], total: 0, message: e.message }; }
+  }
+
+  async getProduct(externalId) {
+    if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    try {
+      const d = await cj("/product/query", { query: { pid: externalId } });
+      const p = d?.data; if (!p) return { ok: false, message: "Product not found" };
+      const variants = (p.variants || []).map(v => ({ external_variant_id: v.vid, sku: v.variantSku, size: v.variantKey, color: v.variantNameEn, supplier_price: Number(v.variantSellPrice) || 0, stock: v.variantQuantity ?? null, weight: Number(v.variantWeight) || null, image: v.variantImage, raw: v }));
+      const images = p.productImageSet || (p.productImage ? [p.productImage] : []);
+      return { ok: true, product: {
+        external_id: p.pid, name: p.productNameEn, description: p.description || p.productNameEn,
+        category_external: p.categoryName, supplier_price: Number(p.sellPrice) || 0, currency: "USD",
+        main_image: p.productImage, images, videos: p.productVideo ? [p.productVideo] : [],
+        weight: Number(p.productWeight) || null, dimensions: { length: p.packLength, width: p.packWidth, height: p.packHeight },
+        specs: p.propertyList ? Object.fromEntries((p.propertyList || []).map(x => [x.propertyNameEn, x.propertyValueEn])) : {},
+        processing_time: p.deliveryTime, variants, raw: p,
+      } };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  async createOrder(order) {
+    if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    try {
+      const d = await cj("/shopping/order/createOrder", { method: "POST", body: {
+        orderNumber: order.orderNumber, shippingCountryCode: order.countryCode, shippingProvince: order.province,
+        shippingCity: order.city, shippingAddress: order.address, shippingCustomerName: order.name,
+        shippingZip: order.zip, shippingPhone: order.phone, remark: "Atlanta Sneakers",
+        products: (order.items || []).map(i => ({ vid: i.external_variant_id, quantity: i.quantity })),
+      } });
+      return { ok: true, external_order_id: d?.data?.orderId || d?.data?.orderNum, status: "created", raw: d?.data };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  async getTracking(ref) {
+    if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    try {
+      const d = await cj("/logistic/getTrackInfo", { query: { trackNumber: ref } });
+      const t = d?.data;
+      return { ok: true, tracking_number: ref, carrier: t?.logisticName, status: t?.trackStatus, current_country: t?.country, history: t?.trackList || [] };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  async getInventory(externalId) {
+    const r = await this.getProduct(externalId);
+    if (!r.ok) return r;
+    const stock = (r.product.variants || []).reduce((a, v) => a + (v.stock || 0), 0);
+    return { ok: true, stock, price: r.product.supplier_price, variants: r.product.variants };
+  }
+
+  async getCategories() {
+    if (!this.isConfigured()) return { ok: false, categories: [] };
+    try { const d = await cj("/product/getCategory", {}); const flat = []; (d?.data || []).forEach(l1 => (l1.categoryFirstList || []).forEach(l2 => (l2.categorySecondList || []).forEach(l3 => flat.push({ external_category_id: l3.categoryId, external_category: `${l1.categoryFirstName} / ${l3.categoryName}` })))); return { ok: true, categories: flat }; }
+    catch (e) { return { ok: false, categories: [], message: e.message }; }
+  }
+}

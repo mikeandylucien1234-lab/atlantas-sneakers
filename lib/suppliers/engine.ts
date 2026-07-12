@@ -1,0 +1,115 @@
+// @ts-nocheck
+// Supplier engines: Import (supplier product -> real Atlanta Sneakers product +
+// variants + images, with pricing rules & category mapping), Order (place a
+// supplier order when a customer buys), and Sync (inventory/price/tracking).
+import { createClient as createAnon } from "@supabase/supabase-js";
+import { getAdapter } from "./registry";
+import { applyPricingRule, suggestComparePrice } from "./adapter";
+
+function svc() { return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } }); }
+function slugify(s) { return (s || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
+async function slog(s, row) { try { await s.from("supplier_logs").insert(row); } catch {} }
+
+async function defaultPricingRule(s, supplierId) {
+  const { data } = await s.from("supplier_pricing_rules").select("*").eq("supplier_id", supplierId).eq("enabled", true).order("is_default", { ascending: false }).order("priority").limit(1);
+  return (data || [])[0] || { rule_type: "markup_percent", value: 35, rounding: "0.99" };
+}
+async function mapCategory(s, supplierId, externalCategory) {
+  if (!externalCategory) return null;
+  const { data } = await s.from("supplier_categories").select("mapped_category_id").eq("supplier_id", supplierId).eq("external_category", externalCategory).maybeSingle();
+  return data?.mapped_category_id || null;
+}
+
+// Import one supplier product into the live catalog. `overrides` lets the wizard
+// override name/price/category/etc. Returns the created product id.
+export async function importProduct({ supplierId, externalId, overrides = {}, actor }) {
+  const s = svc();
+  const adapter = getAdapter(supplierId);
+  // Prefer a cached supplier_products row; otherwise fetch live.
+  let sp = null;
+  const { data: cached } = await s.from("supplier_products").select("*").eq("supplier_id", supplierId).eq("external_id", externalId).maybeSingle();
+  if (cached) sp = { ...cached, product: cached.raw };
+  let detail = cached?.raw;
+  if (!detail || overrides.refresh) { const r = await adapter.getProduct(externalId); if (!r.ok) return { ok: false, error: r.message }; detail = r.product; }
+
+  const rule = await defaultPricingRule(s, supplierId);
+  const cost = Number(overrides.supplier_price ?? detail.supplier_price) || 0;
+  const price = overrides.price != null ? Number(overrides.price) : applyPricingRule(cost, rule);
+  const comparePrice = overrides.compare_price != null ? Number(overrides.compare_price) : suggestComparePrice(price);
+  const name = overrides.name || detail.name;
+  const images = overrides.images || detail.images || (detail.main_image ? [detail.main_image] : []);
+  const categoryId = overrides.category_id || await mapCategory(s, supplierId, detail.category_external);
+
+  // Create the real product
+  const { data: product, error } = await s.from("products").insert({
+    name, slug: overrides.slug || slugify(name) + "-" + Math.random().toString(36).slice(2, 6),
+    description: overrides.description || detail.description || name,
+    price, compare_price: comparePrice, images,
+    category_id: categoryId || null, brand_id: overrides.brand_id || null,
+    status: overrides.status || "draft", is_featured: !!overrides.is_featured, is_new: overrides.is_new !== false,
+    tags: overrides.tags || null, meta_title: overrides.meta_title || name, meta_description: overrides.meta_description || (detail.description || "").slice(0, 160),
+  }).select("id").single();
+  if (error) return { ok: false, error: error.message };
+
+  // Variants
+  const variants = overrides.variants || detail.variants || [];
+  for (const v of variants) {
+    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, sku: v.sku || null, stock: v.stock ?? 0 }).then(() => {}, () => {});
+  }
+  // Image records (source stored; local re-hosting/webp is an optional enhancement)
+  for (let i = 0; i < images.length; i++) {
+    await s.from("supplier_images").insert({ supplier_product_id: sp?.id || null, source_url: images[i], stored_url: images[i], position: i }).then(() => {}, () => {});
+  }
+  // Upsert the supplier_products cache and mark imported
+  await s.from("supplier_products").upsert({
+    supplier_id: supplierId, external_id: externalId, name: detail.name, description: detail.description,
+    category_external: detail.category_external, supplier_price: cost, recommended_price: price,
+    main_image: detail.main_image, images: detail.images || [], videos: detail.videos || [],
+    weight: detail.weight, dimensions: detail.dimensions, specs: detail.specs || {}, processing_time: detail.processing_time,
+    raw: detail, imported: true, imported_product_id: product.id,
+  }, { onConflict: "supplier_id,external_id" });
+  await s.from("supplier_inventory").upsert({ supplier_id: supplierId, external_id: externalId, product_id: product.id, stock: variants.reduce((a, v) => a + (v.stock || 0), 0), supplier_price: cost, synced_at: new Date().toISOString() }, { onConflict: "supplier_id,external_id,variant_sku" }).then(() => {}, () => {});
+  await slog(s, { supplier_id: supplierId, action: "import", status: "ok", actor_id: actor?.id, actor_name: actor?.full_name || actor?.email, error: null });
+  return { ok: true, product_id: product.id, price, comparePrice };
+}
+
+// Place a supplier order for one of our orders (Order Engine).
+export async function createSupplierOrder({ supplierId, order, items, actor }) {
+  const s = svc();
+  const adapter = getAdapter(supplierId);
+  const { data: rec } = await s.from("supplier_orders").insert({ supplier_id: supplierId, order_id: order?.id || null, status: "pending", total: order?.total || 0 }).select("id").single();
+  const res = await adapter.createOrder({ orderNumber: order?.order_number, ...order?.shipping, items });
+  await s.from("supplier_orders").update({ external_order_id: res.external_order_id || null, status: res.ok ? "created" : "failed", error: res.ok ? null : res.message, raw: res.raw || null, updated_at: new Date().toISOString() }).eq("id", rec.id);
+  await slog(s, { supplier_id: supplierId, action: "create_order", status: res.ok ? "ok" : "error", error: res.ok ? null : res.message, actor_id: actor?.id, actor_name: actor?.full_name });
+  return { ok: res.ok, supplier_order_id: rec.id, external_order_id: res.external_order_id, message: res.message };
+}
+
+// Sync tracking for a supplier order (Tracking/Shipping Engine).
+export async function syncTracking({ supplierId, supplierOrderId, trackingNumber, actor }) {
+  const s = svc();
+  const adapter = getAdapter(supplierId);
+  const res = await adapter.getTracking(trackingNumber);
+  if (res.ok) {
+    const { data: so } = await s.from("supplier_orders").select("order_id").eq("id", supplierOrderId).maybeSingle();
+    await s.from("supplier_tracking").upsert({ supplier_order_id: supplierOrderId, order_id: so?.order_id || null, tracking_number: res.tracking_number, carrier: res.carrier, status: res.status, current_country: res.current_country, history: res.history || [], updated_at: new Date().toISOString() }, { onConflict: "id" }).then(() => {}, () => {});
+  }
+  await slog(s, { supplier_id: supplierId, action: "tracking", status: res.ok ? "ok" : "error", error: res.ok ? null : res.message, actor_id: actor?.id });
+  return res;
+}
+
+// Sync inventory/price for imported products (Inventory Engine).
+export async function syncInventory({ supplierId, limit = 100, actor }) {
+  const s = svc();
+  const adapter = getAdapter(supplierId);
+  const { data: imported } = await s.from("supplier_products").select("external_id, imported_product_id").eq("supplier_id", supplierId).eq("imported", true).limit(limit);
+  let updated = 0;
+  for (const row of imported || []) {
+    const inv = await adapter.getInventory(row.external_id);
+    if (!inv.ok) continue;
+    await s.from("supplier_inventory").upsert({ supplier_id: supplierId, external_id: row.external_id, product_id: row.imported_product_id, stock: inv.stock, supplier_price: inv.price, synced_at: new Date().toISOString() }, { onConflict: "supplier_id,external_id,variant_sku" }).then(() => {}, () => {});
+    updated++;
+  }
+  await s.from("supplier_connections").update({ last_sync_at: new Date().toISOString() }).eq("supplier_id", supplierId);
+  await slog(s, { supplier_id: supplierId, action: "sync_inventory", status: "ok", error: `${updated} products` });
+  return { ok: true, updated };
+}

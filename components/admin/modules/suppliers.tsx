@@ -183,7 +183,8 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
             {[["Status", overview.connection?.connected ? "Connected" : "Disconnected", overview.connection?.connected], ["Environment", overview.connection?.environment || "production", true], ["API Health", overview.connection?.api_health || "unknown", overview.connection?.api_health === "healthy"], ["Credentials", overview.configured ? "Configured" : `Missing: ${(overview.missing_env || []).join(", ")}`, overview.configured], ["Webhook", overview.connection?.webhook_status || "inactive", overview.connection?.webhook_status === "active"], ["Last API call", overview.connection?.last_api_call_at ? fmtDT(overview.connection.last_api_call_at) : "never", !!overview.connection?.last_api_call_at], ["Last sync", overview.connection?.last_sync_at ? fmtDT(overview.connection.last_sync_at) : "never", !!overview.connection?.last_sync_at]].map(([l, v, ok]) => (
               <div key={l} className="flex items-center gap-2.5">{ok ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-gray-400" />}<div className="flex-1"><p className={cn("text-xs font-bold", txt)}>{l}</p><p className={cn("text-[11px] capitalize", sub)}>{v}</p></div></div>
             ))}
-            <div className={cn("rounded-[10px] border p-3", brd)}><p className={cn("text-[11px] leading-relaxed", sub)}>API credentials are read from server env vars only ({(overview.env_keys || []).map(k => <code key={k}>{k} </code>)}) — never stored in DB or shown. Set them on o2switch, then Test & Connect.</p></div>
+            <CredsForm supplier={supplier} creds={overview.creds} configured={overview.configured} post={post} reload={loadOverview} styles={{ brd, txt, sub, inpCls, labelCls, btnGhost, btnPrimary }} />
+            <div className={cn("rounded-[10px] border p-3", brd)}><p className={cn("text-[11px] leading-relaxed", sub)}>🔒 Credentials are AES-256 encrypted and stored server-side — never shown again and never sent to the browser. Server env vars ({(overview.env_keys || []).map(k => <code key={k}>{k} </code>)}) still take precedence if set on o2switch.</p></div>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => post("/test", {}, (r) => r.ok ? `Connected${r.latency ? ` · ${r.latency}ms` : ""}` : r.message, loadOverview)} disabled={busy === "/test"} className={btnGhost}>{busy === "/test" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlugZap className="w-3.5 h-3.5" />} Test Connection</button>
               {overview.connection?.connected ? <button onClick={() => post("/disconnect", {}, "Disconnected", loadOverview)} className={cn(btnGhost, "text-red-500")}><Power className="w-3.5 h-3.5" /> Disconnect</button> : <button onClick={() => post("/connect", {}, "Connected", loadOverview)} disabled={!overview.configured} className={btnPrimary}><Plug className="w-3.5 h-3.5" /> Connect</button>}
@@ -362,6 +363,59 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
       )}
 
       {toast && <div className={cn("fixed bottom-6 right-6 z-[130] px-4 py-3 rounded-[12px] text-sm font-semibold text-white shadow-lg animate-in slide-in-from-bottom-2 duration-200 max-w-sm", toast.type === "success" ? "bg-[#16a34a]" : "bg-[#dc2626]")}>{toast.m}</div>}
+    </div>
+  );
+}
+
+// Secure credential entry form. Values are write-only: they are encrypted
+// server-side and never sent back, so the inputs start empty and only submit
+// what the admin types.
+function CredsForm({ supplier, creds, configured, post, reload, styles }) {
+  const { brd, txt, sub, inpCls, labelCls, btnGhost, btnPrimary } = styles;
+  const [open, setOpen] = useState(!configured);
+  const [email, setEmail] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const stored = creds?.stored;
+
+  const save = async () => {
+    if (!email && !apiKey && !token) return;
+    setBusy(true);
+    try {
+      await post("/save-credentials", { email: email || undefined, api_key: apiKey || undefined, access_token: token || undefined },
+        (r) => r?.test?.ok ? "Credentials saved & verified ✓" : `Saved, but test failed: ${r?.test?.message || "check values"}`,
+        async () => { setEmail(""); setApiKey(""); setToken(""); await reload(); });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className={cn("rounded-[12px] border p-3.5 space-y-3", brd)}>
+      <button onClick={() => setOpen(o => !o)} className="flex items-center justify-between w-full">
+        <span className={cn("text-xs font-extrabold flex items-center gap-1.5", txt)}><PlugZap className="w-3.5 h-3.5 text-[#2563eb]" /> API Credentials {stored && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-bold">saved{creds?.hint ? ` · ${creds.hint}` : ""}</span>}</span>
+        <ChevronRight className={cn("w-4 h-4 transition-transform", sub, open && "rotate-90")} />
+      </button>
+      {open && (
+        <div className="space-y-2.5">
+          <div>
+            <label className={labelCls}>CJ Account Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} className={inpCls} placeholder={stored ? "•••••• (leave blank to keep)" : "your-cj-account@email.com"} autoComplete="off" />
+          </div>
+          <div>
+            <label className={labelCls}>CJ API Key</label>
+            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} className={inpCls} placeholder={stored ? "•••••• (leave blank to keep)" : "API key from My CJ → Authorization"} autoComplete="new-password" />
+          </div>
+          <details>
+            <summary className={cn("text-[11px] cursor-pointer", sub)}>Advanced: use a pre-issued Access Token instead</summary>
+            <input type="password" value={token} onChange={e => setToken(e.target.value)} className={cn(inpCls, "mt-2")} placeholder="CJ Access Token (optional)" autoComplete="new-password" />
+          </details>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button onClick={save} disabled={busy || (!email && !apiKey && !token)} className={btnPrimary}>{busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Save & Verify</button>
+            {stored && <button onClick={() => post("/clear-credentials", {}, "Credentials removed", reload)} className={cn(btnGhost, "text-red-500")}><Trash2 className="w-3.5 h-3.5" /> Remove</button>}
+          </div>
+          <p className={cn("text-[10px] leading-relaxed", sub)}>Get your API key at <b>My CJ → Authorization → API</b>. It is encrypted (AES-256-GCM) before storage and never displayed again.</p>
+        </div>
+      )}
     </div>
   );
 }

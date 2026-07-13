@@ -7,6 +7,7 @@ import { getAdapter } from "@/lib/suppliers/registry";
 import { importProduct, createSupplierOrder, syncTracking, syncInventory } from "@/lib/suppliers/engine";
 import { logAudit } from "@/lib/audit/log";
 import { logActivity } from "@/lib/activity/log";
+import { ensureCreds, saveCreds, clearCreds, credsStatus } from "@/lib/suppliers/secrets";
 
 function svc() { return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } }); }
 function ipOf(r) { return r.headers.get("x-forwarded-for")?.split(",")[0] || null; }
@@ -23,12 +24,14 @@ export async function GET(request: NextRequest, { params }) {
       const { data: sup } = await s.from("suppliers").select("*").eq("id", supplier).single();
       const { data: conn } = await s.from("supplier_connections").select("*").eq("supplier_id", supplier).single();
       const adapter = getAdapter(supplier);
-      const [{ count: products }, { count: orders }, { count: imported }] = await Promise.all([
+      await ensureCreds(supplier); // hydrate UI-stored credentials before the sync check
+      const [{ count: products }, { count: orders }, { count: imported }, credStatus] = await Promise.all([
         s.from("supplier_products").select("id", { count: "exact", head: true }).eq("supplier_id", supplier),
         s.from("supplier_orders").select("id", { count: "exact", head: true }).eq("supplier_id", supplier),
         s.from("supplier_products").select("id", { count: "exact", head: true }).eq("supplier_id", supplier).eq("imported", true),
+        credsStatus(supplier),
       ]);
-      return Response.json({ supplier: sup, connection: conn, configured: adapter.isConfigured(), missing_env: adapter.missingEnv?.() || [], env_keys: sup?.env_keys || [], stats: { products, orders, imported } });
+      return Response.json({ supplier: sup, connection: conn, configured: adapter.isConfigured(), missing_env: adapter.missingEnv?.() || [], env_keys: sup?.env_keys || [], stats: { products, orders, imported }, creds: credStatus });
     }
     if (action === "search") {
       const adapter = getAdapter(supplier);
@@ -80,12 +83,33 @@ export async function GET(request: NextRequest, { params }) {
 
 export async function POST(request: NextRequest, { params }) {
   const { supplier, action } = await params;
-  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map"].includes(action) ? "products.manage" : "products.view";
+  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials"].includes(action) ? "products.manage" : "products.view";
   const auth = await requirePermission(perm);
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
   const s = svc(); const actor = auth.profile; const b = await request.json().catch(() => ({})); const ip = ipOf(request);
 
   try {
+    if (action === "save-credentials") {
+      // Encrypt & store credentials entered in the admin UI. Values are never
+      // returned to the browser and never logged in clear.
+      const fields = {};
+      if (b.email != null) fields.email = b.email;
+      if (b.api_key != null) fields.api_key = b.api_key;
+      if (b.access_token != null) fields.access_token = b.access_token;
+      const { hint } = await saveCreds(supplier, fields, actor);
+      await logAudit({ actor, module: "settings", submodule: "suppliers", action: "supplier_credentials_save", description: `${supplier}: credentials updated (${Object.keys(fields).join(", ")})`, level: "warning", ip });
+      await logActivity({ actor, module: "settings", activity_type: "system", action: "supplier_credentials_save", description: `${supplier} credentials updated`, status: "success" });
+      // verify right away
+      const adapter = getAdapter(supplier);
+      const res = await adapter.testConnection();
+      await s.from("supplier_connections").update({ api_health: res.ok ? "healthy" : "error", last_error: res.ok ? null : res.message, updated_at: new Date().toISOString() }).eq("supplier_id", supplier);
+      return Response.json({ ok: true, hint, test: res });
+    }
+    if (action === "clear-credentials") {
+      await clearCreds(supplier);
+      await logAudit({ actor, module: "settings", submodule: "suppliers", action: "supplier_credentials_clear", description: `${supplier}: stored credentials removed`, level: "warning", ip });
+      return Response.json({ ok: true });
+    }
     if (action === "test") {
       const adapter = getAdapter(supplier); const started = Date.now();
       const res = await adapter.testConnection();

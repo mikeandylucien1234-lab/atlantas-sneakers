@@ -4,14 +4,29 @@
 // pre-issued CJ_ACCESS_TOKEN). Access tokens are cached in-process. With no
 // credentials every method returns an honest "not connected" result.
 import { SupplierAdapter } from "./adapter";
+import { ensureCreds, getCreds } from "./secrets";
 
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
-let _token = { value: process.env.CJ_ACCESS_TOKEN || null, exp: process.env.CJ_ACCESS_TOKEN ? Date.now() + 3600_000 : 0 };
+let _token = { value: null, exp: 0 };
 
+// Resolve credentials: env vars win, then UI-stored (encrypted) values.
+function creds() {
+  const s = getCreds("cj");
+  return {
+    email: process.env.CJ_EMAIL || s.email || null,
+    apiKey: process.env.CJ_API_KEY || s.api_key || null,
+    accessToken: process.env.CJ_ACCESS_TOKEN || s.access_token || null,
+  };
+}
+
+let _tokenSig = "";
 async function getToken() {
+  const c = creds();
+  const sig = `${c.email || ""}:${c.apiKey || ""}:${c.accessToken || ""}`;
+  if (sig !== _tokenSig) { _token = { value: null, exp: 0 }; _tokenSig = sig; } // creds changed → re-auth
   if (_token.value && Date.now() < _token.exp) return _token.value;
-  const email = process.env.CJ_EMAIL, apiKey = process.env.CJ_API_KEY;
-  if (!email || !apiKey) return process.env.CJ_ACCESS_TOKEN || null;
+  const { email, apiKey, accessToken } = c;
+  if (!email || !apiKey) return accessToken || null;
   const r = await fetch(`${BASE}/authentication/getAccessToken`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password: apiKey }), signal: AbortSignal.timeout(8000),
@@ -34,17 +49,22 @@ async function cj(path, { method = "GET", body, query } = {}) {
 
 export class CJAdapter extends SupplierAdapter {
   constructor() { super("cj", ["CJ_API_KEY", "CJ_ACCESS_TOKEN"]); }
-  isConfigured() { return !!(process.env.CJ_ACCESS_TOKEN || (process.env.CJ_EMAIL && process.env.CJ_API_KEY)); }
+  // Ensures the encrypted UI-stored credentials are hydrated into the cache
+  // before any sync isConfigured() check runs. Call at the top of async methods.
+  async hydrate() { await ensureCreds("cj"); }
+  isConfigured() { const c = creds(); return !!(c.accessToken || (c.email && c.apiKey)); }
   missingEnv() { return this.isConfigured() ? [] : ["CJ_EMAIL", "CJ_API_KEY"]; }
 
   async testConnection() {
-    if (!this.isConfigured()) return { ok: false, configured: false, message: "Set CJ_EMAIL + CJ_API_KEY (or CJ_ACCESS_TOKEN) on the server." };
+    await this.hydrate();
+    if (!this.isConfigured()) return { ok: false, configured: false, message: "Add your CJ credentials (email + API key) below, or set CJ_EMAIL + CJ_API_KEY on the server." };
     const t = Date.now();
     try { await getToken(); await cj("/product/list", { query: { pageNum: 1, pageSize: 1 } }); return { ok: true, configured: true, latency: Date.now() - t, message: "CJ Dropshipping API reachable & authenticated." }; }
     catch (e) { return { ok: false, configured: true, latency: Date.now() - t, message: e.message }; }
   }
 
   async searchProducts({ keyword, page = 1, pageSize = 20, category, warehouse } = {}) {
+    await this.hydrate();
     if (!this.isConfigured()) return { ok: false, products: [], total: 0, configured: false, message: "CJ not connected — add credentials to search live products." };
     try {
       const d = await cj("/product/list", { query: { pageNum: page, pageSize, productNameEn: keyword || undefined, categoryId: category || undefined, countryCode: warehouse || undefined } });
@@ -57,6 +77,7 @@ export class CJAdapter extends SupplierAdapter {
   }
 
   async getProduct(externalId) {
+    await this.hydrate();
     if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
     try {
       const d = await cj("/product/query", { query: { pid: externalId } });
@@ -75,6 +96,7 @@ export class CJAdapter extends SupplierAdapter {
   }
 
   async createOrder(order) {
+    await this.hydrate();
     if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
     try {
       const d = await cj("/shopping/order/createOrder", { method: "POST", body: {
@@ -88,6 +110,7 @@ export class CJAdapter extends SupplierAdapter {
   }
 
   async getTracking(ref) {
+    await this.hydrate();
     if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
     try {
       const d = await cj("/logistic/getTrackInfo", { query: { trackNumber: ref } });
@@ -104,6 +127,7 @@ export class CJAdapter extends SupplierAdapter {
   }
 
   async getCategories() {
+    await this.hydrate();
     if (!this.isConfigured()) return { ok: false, categories: [] };
     try { const d = await cj("/product/getCategory", {}); const flat = []; (d?.data || []).forEach(l1 => (l1.categoryFirstList || []).forEach(l2 => (l2.categorySecondList || []).forEach(l3 => flat.push({ external_category_id: l3.categoryId, external_category: `${l1.categoryFirstName} / ${l3.categoryName}` })))); return { ok: true, categories: flat }; }
     catch (e) { return { ok: false, categories: [], message: e.message }; }

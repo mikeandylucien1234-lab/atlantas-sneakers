@@ -208,6 +208,8 @@ export default function AdminPage() {
         return <AdminHealth dark={dark} />;
       case "suppliers":
         return <AdminSuppliers dark={dark} />;
+      case "cjdropshipping":
+        return <AdminSuppliers dark={dark} initialView="supplier" focusSupplier="cj" />;
       case "attributes":
         return <AdminAttributes dark={dark} />;
       case "sizes":

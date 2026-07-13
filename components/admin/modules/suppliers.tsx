@@ -10,7 +10,7 @@ import {
   AlertTriangle, ChevronRight, ChevronLeft, Copy, Trash2, Package, Image as ImageIcon,
 } from "lucide-react";
 
-type Props = { dark: boolean };
+type Props = { dark: boolean; initialView?: string; focusSupplier?: string };
 
 const NAV = [
   ["dashboard", "Dashboard", LayoutDashboard], ["suppliers", "Suppliers", Store], ["supplier", "Supplier", Plug],
@@ -23,7 +23,7 @@ const WIZARD_STEPS = ["Information", "Images", "Variants", "Pricing", "SEO", "Sh
 function fmtDT(d) { return d ? new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; }
 function timeAgo(d) { if (!d) return "never"; const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000); if (s < 60) return `${s}s ago`; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return `${Math.floor(s / 86400)}d ago`; }
 
-export function AdminSuppliers({ dark }: Props) {
+export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   const p = dark ? "bg-[#171c24]" : "bg-white";
   const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
   const txt = dark ? "text-[#e7ebf0]" : "text-[#16181d]";
@@ -37,8 +37,8 @@ export function AdminSuppliers({ dark }: Props) {
   const btnPrimary = "h-9 px-3 rounded-[10px] bg-[#2563eb] text-white text-xs font-bold hover:bg-[#1d4ed8] disabled:opacity-50 flex items-center gap-1.5";
   const divide = dark ? "divide-[#252c36]" : "divide-[#eef0f3]";
 
-  const [view, setView] = useState("dashboard");
-  const [supplier, setSupplier] = useState("cj");
+  const [view, setView] = useState(initialView || "dashboard");
+  const [supplier, setSupplier] = useState(focusSupplier || "cj");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
   const [toast, setToast] = useState(null);

@@ -18,10 +18,19 @@ function svc() {
 
 // 32-byte key derived from a server secret. Prefers a dedicated key; falls back
 // to other server-only secrets so encryption still works out of the box.
+const DEFAULT_SECRET = "atlanta-sneakers-supplier-fallback-key";
 function key() {
   const raw = process.env.SUPPLIER_SECRET_KEY || process.env.BACKUP_ENCRYPTION_KEY
-    || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXTAUTH_SECRET || "atlanta-sneakers-supplier-fallback-key";
+    || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXTAUTH_SECRET || DEFAULT_SECRET;
   return crypto.createHash("sha256").update(String(raw)).digest(); // 32 bytes
+}
+// Every candidate key the server might have used, so ciphertext written with any
+// of them (including the stable default) still decrypts regardless of which env
+// vars are set on this host.
+function candidateKeys() {
+  const raws = [process.env.SUPPLIER_SECRET_KEY, process.env.BACKUP_ENCRYPTION_KEY,
+    process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.NEXTAUTH_SECRET, DEFAULT_SECRET].filter(Boolean);
+  return raws.map(r => crypto.createHash("sha256").update(String(r)).digest());
 }
 
 export function encryptJSON(obj) {
@@ -32,14 +41,17 @@ export function encryptJSON(obj) {
   return Buffer.concat([iv, tag, enc]).toString("base64");
 }
 export function decryptJSON(b64) {
-  try {
-    const buf = Buffer.from(b64, "base64");
-    const iv = buf.subarray(0, 12), tag = buf.subarray(12, 28), payload = buf.subarray(28);
-    const decipher = crypto.createDecipheriv("aes-256-gcm", key(), iv);
-    decipher.setAuthTag(tag);
-    const dec = Buffer.concat([decipher.update(payload), decipher.final()]);
-    return JSON.parse(dec.toString("utf8"));
-  } catch { return null; }
+  const buf = Buffer.from(b64, "base64");
+  const iv = buf.subarray(0, 12), tag = buf.subarray(12, 28), payload = buf.subarray(28);
+  for (const k of candidateKeys()) {
+    try {
+      const decipher = crypto.createDecipheriv("aes-256-gcm", k, iv);
+      decipher.setAuthTag(tag);
+      const dec = Buffer.concat([decipher.update(payload), decipher.final()]);
+      return JSON.parse(dec.toString("utf8"));
+    } catch { /* try next candidate key */ }
+  }
+  return null;
 }
 
 // in-process cache: supplierId -> { creds, exp }

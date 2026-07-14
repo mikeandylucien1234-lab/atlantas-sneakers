@@ -99,10 +99,17 @@ export async function POST(request: NextRequest, { params }) {
       const { hint } = await saveCreds(supplier, fields, actor);
       await logAudit({ actor, module: "settings", submodule: "suppliers", action: "supplier_credentials_save", description: `${supplier}: credentials updated (${Object.keys(fields).join(", ")})`, level: "warning", ip });
       await logActivity({ actor, module: "settings", activity_type: "system", action: "supplier_credentials_save", description: `${supplier} credentials updated`, status: "success" });
-      // verify right away
+      // verify right away and, if it works, mark the supplier connected so the
+      // connection stays active (no need to press Connect separately).
       const adapter = getAdapter(supplier);
       const res = await adapter.testConnection();
-      await s.from("supplier_connections").update({ api_health: res.ok ? "healthy" : "error", last_error: res.ok ? null : res.message, updated_at: new Date().toISOString() }).eq("supplier_id", supplier);
+      await s.from("supplier_connections").update({
+        connected: res.ok ? true : undefined,
+        api_health: res.ok ? "healthy" : "error",
+        last_error: res.ok ? null : res.message,
+        updated_at: new Date().toISOString(),
+      }).eq("supplier_id", supplier);
+      if (res.ok) await s.from("suppliers").update({ status: "connected" }).eq("id", supplier);
       return Response.json({ ok: true, hint, test: res });
     }
     if (action === "clear-credentials") {

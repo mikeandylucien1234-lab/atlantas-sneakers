@@ -129,7 +129,7 @@ export async function POST(request: NextRequest, { params }) {
       return Response.json({ ok: true });
     }
     if (action === "import") {
-      const res = await importProduct({ supplierId: supplier, externalId: b.external_id, overrides: b.overrides || {}, actor });
+      const res = await importProduct({ supplierId: supplier, externalId: b.external_id, overrides: b.overrides || {}, actor, db: auth.sb });
       if (!res.ok) return Response.json({ error: res.error }, { status: 500 });
       await logAudit({ actor, module: "products", submodule: "suppliers", action: "supplier_import", description: `${supplier}:${b.external_id} → product ${res.product_id}`, entity_id: res.product_id, ip });
       await logActivity({ actor, module: "products", activity_type: "product", action: "product_imported", description: `Imported from ${supplier}`, status: "success", object_type: "product", object_id: res.product_id });
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest, { params }) {
       const ids = b.external_ids || [];
       const { data: job } = await s.from("supplier_sync_jobs").insert({ supplier_id: supplier, job_type: "import", status: "running", total: ids.length, started_at: new Date().toISOString(), created_by: actor.id }).select("id").single();
       let ok = 0, fail = 0;
-      for (const id of ids.slice(0, 500)) { const r = await importProduct({ supplierId: supplier, externalId: id, overrides: b.overrides || {}, actor }); if (r.ok) ok++; else fail++; await s.from("supplier_sync_jobs").update({ processed: ok + fail, succeeded: ok, failed: fail, progress: Math.round((ok + fail) / ids.length * 100) }).eq("id", job.id); }
+      for (const id of ids.slice(0, 500)) { const r = await importProduct({ supplierId: supplier, externalId: id, overrides: b.overrides || {}, actor, db: auth.sb }); if (r.ok) ok++; else fail++; await s.from("supplier_sync_jobs").update({ processed: ok + fail, succeeded: ok, failed: fail, progress: Math.round((ok + fail) / ids.length * 100) }).eq("id", job.id); }
       await s.from("supplier_sync_jobs").update({ status: "completed", finished_at: new Date().toISOString(), detail: `${ok} imported, ${fail} failed` }).eq("id", job.id);
       await logAudit({ actor, module: "products", submodule: "suppliers", action: "supplier_bulk_import", description: `${supplier}: ${ok}/${ids.length}`, ip });
       return Response.json({ ok: true, job_id: job.id, imported: ok, failed: fail });

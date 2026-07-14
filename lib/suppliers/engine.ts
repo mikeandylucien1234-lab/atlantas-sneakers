@@ -22,8 +22,11 @@ async function mapCategory(s, supplierId, externalCategory) {
 
 // Import one supplier product into the live catalog. `overrides` lets the wizard
 // override name/price/category/etc. Returns the created product id.
-export async function importProduct({ supplierId, externalId, overrides = {}, actor }) {
-  const s = svc();
+export async function importProduct({ supplierId, externalId, overrides = {}, actor, db }) {
+  // Prefer an explicit (authenticated admin) client so imports work via RLS even
+  // when SUPABASE_SERVICE_ROLE_KEY is not configured on the host. Falls back to
+  // the service client otherwise.
+  const s = db || svc();
   const adapter = getAdapter(supplierId);
   // Prefer a cached supplier_products row; otherwise fetch live.
   let sp = null;

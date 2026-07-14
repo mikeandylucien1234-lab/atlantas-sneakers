@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.supabase.co" },
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "cdn.shopify.com" },
+      { protocol: "https", hostname: "**.cjdropshipping.com" },
+      { protocol: "https", hostname: "cbu01.alicdn.com" },
+      { protocol: "https", hostname: "**.alicdn.com" },
     ],
   },
   webpack: (config) => {

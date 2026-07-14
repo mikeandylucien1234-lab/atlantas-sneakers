@@ -10,6 +10,35 @@ function svc() { return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, proces
 function slugify(s) { return (s || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
 async function slog(s, row) { try { await s.from("supplier_logs").insert(row); } catch {} }
 
+// Download each supplier image and upload it to the product-images bucket,
+// returning the public Storage URLs. Any image that can't be fetched/uploaded
+// keeps its original URL so nothing is silently dropped.
+async function rehostImages(s, urls) {
+  const list = Array.isArray(urls) ? urls.filter(u => typeof u === "string" && u.trim()) : [];
+  const out = [];
+  for (let i = 0; i < list.length; i++) {
+    let url = list[i].trim();
+    if (url.startsWith("//")) url = "https:" + url;
+    if (url.includes(".supabase.co/storage/")) { out.push(url); continue; } // already hosted
+    if (!/^https?:\/\//i.test(url)) { continue; } // skip local/file URLs
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { "User-Agent": "Mozilla/5.0", Referer: "" } });
+      if (!res.ok) { out.push(url); continue; }
+      const ct = (res.headers.get("content-type") || "image/jpeg").split(";")[0];
+      if (!ct.startsWith("image/")) { out.push(url); continue; }
+      const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : ct.includes("gif") ? "gif" : ct.includes("avif") ? "avif" : "jpg";
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!buf.length) { out.push(url); continue; }
+      const path = `products/cj-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+      const { error } = await s.storage.from("product-images").upload(path, buf, { contentType: ct, upsert: false });
+      if (error) { out.push(url); continue; }
+      const { data: pub } = s.storage.from("product-images").getPublicUrl(path);
+      out.push(pub?.publicUrl || url);
+    } catch { out.push(url); }
+  }
+  return out;
+}
+
 async function defaultPricingRule(s, supplierId) {
   const { data } = await s.from("supplier_pricing_rules").select("*").eq("supplier_id", supplierId).eq("enabled", true).order("is_default", { ascending: false }).order("priority").limit(1);
   return (data || [])[0] || { rule_type: "markup_percent", value: 35, rounding: "0.99" };
@@ -47,7 +76,11 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   const price = overrides.price != null ? Number(overrides.price) : applyPricingRule(cost, rule);
   const comparePrice = overrides.compare_price != null ? Number(overrides.compare_price) : suggestComparePrice(price);
   const name = overrides.name || detail.name;
-  const images = overrides.images || detail.images || (detail.main_image ? [detail.main_image] : []);
+  const rawImages = overrides.images || detail.images || (detail.main_image ? [detail.main_image] : []);
+  // Download every supplier image and re-host it in our own Storage so products
+  // never depend on the supplier's hotlink-protected CDN (which next/image also
+  // refuses to render). Falls back to the original URL only if re-hosting fails.
+  const images = await rehostImages(s, rawImages);
   const categoryId = overrides.category_id || await mapCategory(s, supplierId, detail.category_external);
 
   // Create the real product

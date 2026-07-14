@@ -7,6 +7,42 @@ import { SupplierAdapter } from "./adapter";
 import { ensureCreds, getCreds } from "./secrets";
 
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
+
+// CJ encodes a variant's options in variantKey, e.g. "White-S", "Wine Red-2XL",
+// "Black-XXL". Split on the LAST separator so multi-word colours stay intact and
+// the trailing token becomes the size. Falls back to treating the whole value as
+// the colour when there is no size segment.
+const SIZE_TOKENS = new Set(["xs", "s", "m", "l", "xl", "xxl", "xxxl", "2xl", "3xl", "4xl", "5xl", "6xl", "one size", "onesize", "free size"]);
+function parseVariantKey(key) {
+  const k = String(key || "").replace(/\s+/g, " ").trim();
+  if (!k) return { color: null, size: null };
+  const parts = k.split(/[-/|]/).map(s => s.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1];
+    // If the last token looks like a size, use it; else keep everything as colour.
+    if (SIZE_TOKENS.has(last.toLowerCase()) || /^\d+([.,]\d+)?$/.test(last) || /^(2|3|4|5|6)?x*l$/i.test(last)) {
+      return { color: parts.slice(0, -1).join(" "), size: last };
+    }
+    return { color: parts.join(" "), size: null };
+  }
+  // single token — is it a size or a colour?
+  if (SIZE_TOKENS.has(k.toLowerCase())) return { color: null, size: k };
+  return { color: k, size: null };
+}
+
+const COLOR_HEX = {
+  white: "#f5f5f5", black: "#111111", grey: "#8a8f98", gray: "#8a8f98", silver: "#c0c0c0",
+  red: "#d32f2f", "wine red": "#722f37", wine: "#722f37", burgundy: "#722f37",
+  blue: "#1e50a2", navy: "#1f2d5a", "navy blue": "#1f2d5a", "sky blue": "#87ceeb", "light blue": "#add8e6",
+  green: "#2e7d32", "army green": "#4b5320", "dark green": "#1b4332",
+  yellow: "#f4c430", orange: "#ea7317", pink: "#ec4899", purple: "#7c3aed", brown: "#6f4e37",
+  coffee: "#6f4e37", "coffee brown": "#6f4e37", khaki: "#c3b091", beige: "#e8d9c0",
+  gold: "#d4af37", "rose gold": "#b76e79", apricot: "#fbceb1", "light grey": "#d3d3d3", "dark grey": "#4a4a4a",
+};
+function hexForColor(name) {
+  if (!name) return null;
+  return COLOR_HEX[String(name).toLowerCase().trim()] || null;
+}
 let _token = { value: null, exp: 0 };
 
 // Resolve credentials: env vars win, then UI-stored (encrypted) values.
@@ -82,7 +118,15 @@ export class CJAdapter extends SupplierAdapter {
     try {
       const d = await cj("/product/query", { query: { pid: externalId } });
       const p = d?.data; if (!p) return { ok: false, message: "Product not found" };
-      const variants = (p.variants || []).map(v => ({ external_variant_id: v.vid, sku: v.variantSku, size: v.variantKey, color: v.variantNameEn, supplier_price: Number(v.variantSellPrice) || 0, stock: v.variantQuantity ?? null, weight: Number(v.variantWeight) || null, image: v.variantImage, raw: v }));
+      const variants = (p.variants || []).map(v => {
+        const parsed = parseVariantKey(v.variantKey || v.variantNameEn || v.variantStandard || "");
+        return {
+          external_variant_id: v.vid, sku: v.variantSku,
+          color: parsed.color, size: parsed.size, color_hex: hexForColor(parsed.color),
+          supplier_price: Number(v.variantSellPrice) || 0, stock: v.variantQuantity ?? null,
+          weight: Number(v.variantWeight) || null, image: v.variantImage, raw: v,
+        };
+      });
       const images = p.productImageSet || (p.productImage ? [p.productImage] : []);
       return { ok: true, product: {
         external_id: p.pid, name: p.productNameEn, description: p.description || p.productNameEn,

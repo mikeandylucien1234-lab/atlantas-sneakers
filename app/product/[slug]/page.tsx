@@ -21,6 +21,20 @@ import { JsonLd } from "@/components/seo/json-ld";
 import { ProductWarranty } from "@/components/product/product-warranty";
 import { buildProductSchema, buildBreadcrumb } from "@/lib/seo/structured-data";
 
+// Strip any HTML (tags + embedded images) from supplier descriptions so raw
+// markup never shows on the storefront, even for products imported before the
+// import-side cleaner existed.
+function cleanText(html?: string | null): string {
+  if (!html) return "";
+  let t = String(html);
+  t = t.replace(/<\s*img[^>]*>/gi, "");
+  t = t.replace(/<\s*br\s*\/?>/gi, "\n");
+  t = t.replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, "\n");
+  t = t.replace(/<[^>]+>/g, "");
+  t = t.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/g, "'");
+  return t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 type AccordionItemProps = { title: string; children: React.ReactNode; defaultOpen?: boolean };
 
 function AccordionItem({ title, children, defaultOpen = false }: AccordionItemProps) {
@@ -289,7 +303,7 @@ export default function ProductPage() {
       {/* Accordion */}
       <div className="grid gap-3 mt-10">
         <AccordionItem title="Product Details" defaultOpen>
-          <p>{product.description}</p>
+          <p className="whitespace-pre-line">{cleanText(product.description)}</p>
           {product.tags?.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {product.tags.map((tag) => (

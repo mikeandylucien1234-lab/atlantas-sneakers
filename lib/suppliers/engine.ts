@@ -10,6 +10,22 @@ function svc() { return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, proces
 function slugify(s) { return (s || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
 async function slog(s, row) { try { await s.from("supplier_logs").insert(row); } catch {} }
 
+// Convert a supplier's HTML description into clean, readable plain text:
+// drop embedded images, turn block tags into line breaks, strip the rest,
+// decode common entities.
+function cleanDescription(html) {
+  if (!html) return "";
+  let t = String(html);
+  t = t.replace(/<\s*(img|script|style)[^>]*>[\s\S]*?<\/\s*(script|style)\s*>/gi, "");
+  t = t.replace(/<\s*img[^>]*>/gi, "");
+  t = t.replace(/<\s*br\s*\/?>/gi, "\n");
+  t = t.replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, "\n");
+  t = t.replace(/<[^>]+>/g, "");
+  t = t.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/g, "'");
+  t = t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").replace(/^\s+|\s+$/g, "");
+  return t;
+}
+
 // Download each supplier image and upload it to the product-images bucket,
 // returning the public Storage URLs. Any image that can't be fetched/uploaded
 // keeps its original URL so nothing is silently dropped.
@@ -83,21 +99,26 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   const images = await rehostImages(s, rawImages);
   const categoryId = overrides.category_id || await mapCategory(s, supplierId, detail.category_external);
 
+  // Supplier descriptions are raw HTML with embedded <img> tags — clean them to
+  // readable plain text so the storefront never shows markup.
+  const description = cleanDescription(overrides.description || detail.description) || name;
+  const metaDesc = (overrides.meta_description && cleanDescription(overrides.meta_description)) || description.slice(0, 160);
+
   // Create the real product
   const { data: product, error } = await s.from("products").insert({
     name, slug: overrides.slug || slugify(name) + "-" + Math.random().toString(36).slice(2, 6),
-    description: overrides.description || detail.description || name,
+    description,
     price, compare_price: comparePrice, images,
     category_id: categoryId || null, brand_id: overrides.brand_id || null,
     status: overrides.status || "draft", is_featured: !!overrides.is_featured, is_new: overrides.is_new !== false,
-    tags: overrides.tags || null, meta_title: overrides.meta_title || name, meta_description: overrides.meta_description || (detail.description || "").slice(0, 160),
+    tags: overrides.tags || null, meta_title: overrides.meta_title || name, meta_description: metaDesc,
   }).select("id").single();
   if (error) return { ok: false, error: error.message };
 
   // Variants
   const variants = overrides.variants || detail.variants || [];
   for (const v of variants) {
-    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, sku: v.sku || null, stock: v.stock ?? 0 }).then(() => {}, () => {});
+    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, sku: v.sku || null, stock: v.stock ?? 0 }).then(() => {}, () => {});
   }
   // Image records (source stored; local re-hosting/webp is an optional enhancement)
   for (let i = 0; i < images.length; i++) {

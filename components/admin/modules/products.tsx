@@ -307,12 +307,7 @@ export function AdminProducts({ dark, onNavigate }: Props) {
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this product permanently?")) return;
     try {
-      const res = await fetch("/api/admin/products", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: [id] }),
-      });
-      if (!res.ok) throw new Error("Failed to delete");
+      await deleteProductsResilient([id]);
       showToast("Product deleted");
       fetchProducts();
       fetchKpis();
@@ -321,15 +316,48 @@ export function AdminProducts({ dark, onNavigate }: Props) {
     }
   };
 
+  // Deletes via the API, falling back to a direct (authenticated) Supabase
+  // delete when the host blocks the DELETE method (o2switch returns 405/403 on
+  // DELETE/PATCH/PUT). Admin RLS permits the direct delete.
+  const deleteProductsResilient = async (ids: string[]) => {
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) return;
+    } catch { /* network/method blocked — fall through */ }
+    const supabase = createClient();
+    const { data: session } = await supabase.auth.getSession();
+    if (!session?.session) throw new Error("Session expired — refresh and sign in again.");
+    // Remove dependent rows first (in case cascade isn't configured), then the product.
+    await supabase.from("product_variants").delete().in("product_id", ids);
+    const { error } = await supabase.from("products").delete().in("id", ids);
+    if (error) throw new Error(error.message);
+  };
+
   // ──── ARCHIVE ────
-  const handleArchive = async (id: string) => {
+  // Sets status; falls back to a direct Supabase update when PATCH is blocked.
+  const setProductsStatusResilient = async (ids: string[], status: string, apiAction: string) => {
     try {
       const res = await fetch("/api/admin/products", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: [id], action: "archive" }),
+        body: JSON.stringify({ ids, action: apiAction }),
       });
-      if (!res.ok) throw new Error("Failed to archive");
+      if (res.ok) return;
+    } catch { /* method blocked — fall through */ }
+    const supabase = createClient();
+    const { data: session } = await supabase.auth.getSession();
+    if (!session?.session) throw new Error("Session expired — refresh and sign in again.");
+    const { error } = await supabase.from("products").update({ status }).in("id", ids);
+    if (error) throw new Error(error.message);
+  };
+
+  const handleArchive = async (id: string) => {
+    try {
+      await setProductsStatusResilient([id], "archived", "archive");
       showToast("Product archived");
       fetchProducts();
       fetchKpis();
@@ -382,12 +410,7 @@ export function AdminProducts({ dark, onNavigate }: Props) {
     if (action === "delete") {
       if (!window.confirm(`Delete ${ids.length} product(s) permanently?`)) return;
       try {
-        const res = await fetch("/api/admin/products", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids }),
-        });
-        if (!res.ok) throw new Error("Bulk delete failed");
+        await deleteProductsResilient(ids);
         showToast(`${ids.length} product(s) deleted`);
       } catch (e: unknown) {
         showToast(e instanceof Error ? e.message : "Bulk action failed", "error");
@@ -395,12 +418,8 @@ export function AdminProducts({ dark, onNavigate }: Props) {
       }
     } else {
       try {
-        const res = await fetch("/api/admin/products", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids, action }),
-        });
-        if (!res.ok) throw new Error("Bulk action failed");
+        const statusMap: Record<string, string> = { archive: "archived", activate: "active", draft: "draft", publish: "active" };
+        await setProductsStatusResilient(ids, statusMap[action] || "active", action);
         showToast(`${ids.length} product(s) updated`);
       } catch (e: unknown) {
         showToast(e instanceof Error ? e.message : "Bulk action failed", "error");

@@ -56,14 +56,39 @@ export async function getProducts(filters?: ProductFilters) {
 
 export async function getProductBySlug(slug: string) {
   const supabase = createClient();
+  // Try with the reviews + reviewer-profile embed first.
   const { data, error } = await supabase
     .from("products")
     .select(`${PRODUCT_SELECT}, reviews(*, profile:profiles(full_name, avatar_url))`)
     .eq("slug", slug)
     .eq("status", "active")
-    .single();
-  if (error) throw error;
-  return data as Product & { reviews: Array<{ id: string; rating: number; title: string | null; comment: string | null; created_at: string; profile: { full_name: string | null; avatar_url: string | null } | null }> };
+    .maybeSingle();
+  if (!error && data) {
+    return data as Product & { reviews: Array<{ id: string; rating: number; title: string | null; comment: string | null; created_at: string; profile: { full_name: string | null; avatar_url: string | null } | null }> };
+  }
+  // Fallback: the reviews/profiles embed can fail (e.g. missing relationship in
+  // PostgREST's cache). Never break the whole detail page over reviews — load
+  // the core product (with brand/category/variants) and fetch reviews best-effort.
+  const { data: core, error: coreErr } = await supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("slug", slug)
+    .eq("status", "active")
+    .maybeSingle();
+  if (coreErr) throw coreErr;
+  if (!core) return null;
+  let reviews: any[] = [];
+  try {
+    const { data: rv } = await supabase
+      .from("reviews")
+      .select("*, profile:profiles(full_name, avatar_url)")
+      .eq("product_id", (core as any).id)
+      .order("created_at", { ascending: false });
+    reviews = rv || [];
+  } catch {
+    reviews = [];
+  }
+  return { ...(core as any), reviews } as Product & { reviews: any[] };
 }
 
 export async function getCategories() {

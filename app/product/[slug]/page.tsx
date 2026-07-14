@@ -119,16 +119,17 @@ export default function ProductPage() {
   }
 
   const handleAddToCart = () => {
-    if (!selectedSize) return;
-    const variant = product.variants?.find((v) => v.size === selectedSize && (!selectedColor || v.color === selectedColor));
+    // Only require a size when the product actually has sizes.
+    if (sizes.length > 0 && !selectedSize) return;
+    const variant = product.variants?.find((v) => (!selectedSize || v.size === selectedSize) && (!selectedColor || v.color === selectedColor));
     addItem({
       productId: product.id,
-      variantId: variant?.id ?? `${product.id}-${selectedSize}`,
+      variantId: variant?.id ?? (selectedSize ? `${product.id}-${selectedSize}` : product.id),
       name: product.name,
       image: images[0],
       price: Number(product.price),
       comparePrice: product.compare_price ? Number(product.compare_price) : null,
-      size: selectedSize,
+      size: selectedSize ?? "",
       color: selectedColor,
       quantity,
     });
@@ -258,7 +259,7 @@ export default function ProductPage() {
           {/* Actions */}
           <div className="mt-6 flex items-center gap-3">
             <QuantitySelector value={quantity} onChange={setQuantity} />
-            <Button size="lg" className="flex-1" onClick={handleAddToCart} disabled={!selectedSize}>
+            <Button size="lg" className="flex-1" onClick={handleAddToCart} disabled={sizes.length > 0 && !selectedSize}>
               <ShoppingCart className="w-[18px] h-[18px]" />
               Add to Cart
             </Button>

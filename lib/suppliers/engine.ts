@@ -29,8 +29,15 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   let sp = null;
   const { data: cached } = await s.from("supplier_products").select("*").eq("supplier_id", supplierId).eq("external_id", externalId).maybeSingle();
   if (cached) sp = { ...cached, product: cached.raw };
-  let detail = cached?.raw;
-  if (!detail || overrides.refresh) { const r = await adapter.getProduct(externalId); if (!r.ok) return { ok: false, error: r.message }; detail = r.product; }
+  // Use, in order: a cached supplier_products row, the detail the Import Wizard
+  // already loaded (passed in overrides.detail — lets publish work without a
+  // second live API call), then a fresh live fetch as a last resort.
+  let detail = overrides.refresh ? null : (cached?.raw || overrides.detail);
+  if (!detail) {
+    const r = await adapter.getProduct(externalId);
+    if (!r.ok) return { ok: false, error: r.message };
+    detail = r.product;
+  }
 
   const rule = await defaultPricingRule(s, supplierId);
   const cost = Number(overrides.supplier_price ?? detail.supplier_price) || 0;

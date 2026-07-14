@@ -70,7 +70,8 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
 
   const loadDash = useCallback(async () => { try { setDash(await api("/suppliers?section=dashboard")); } catch {} }, [api]);
   const loadSuppliers = useCallback(async () => { try { const r = await api("/suppliers?section=list"); setSuppliers(r.suppliers || []); } catch {} }, [api]);
-  const loadOverview = useCallback(async () => { try { setOverview(await sapi("/overview")); } catch {} }, [sapi]);
+  const [overviewErr, setOverviewErr] = useState(null);
+  const loadOverview = useCallback(async () => { setOverviewErr(null); try { setOverview(await sapi("/overview")); } catch (e) { setOverviewErr(e.message || "Failed to load"); } }, [sapi]);
 
   useEffect(() => { (async () => { setLoading(true); await Promise.all([loadDash(), loadSuppliers()]); setLoading(false); })(); }, [loadDash, loadSuppliers]);
   useEffect(() => {
@@ -176,6 +177,20 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
       )}
 
       {/* SUPPLIER (CJ) PAGE */}
+      {view === "supplier" && !overview && (
+        <div className={cn(cardCls, "p-8 flex flex-col items-center justify-center gap-3 text-center")}>
+          {overviewErr ? (
+            <>
+              <XCircle className="w-8 h-8 text-red-400" />
+              <p className={cn("text-sm font-bold", txt)}>Could not load {supplier?.toUpperCase()} supplier</p>
+              <p className={cn("text-xs max-w-xs", sub)}>{overviewErr}</p>
+              <button onClick={loadOverview} className={btnPrimary}><RefreshCw className="w-3.5 h-3.5" /> Retry</button>
+            </>
+          ) : (
+            <><Loader2 className="w-6 h-6 animate-spin text-[#2563eb]" /><p className={cn("text-xs", sub)}>Loading supplier…</p></>
+          )}
+        </div>
+      )}
       {view === "supplier" && overview && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className={cn(cardCls, "p-5 space-y-3")}>

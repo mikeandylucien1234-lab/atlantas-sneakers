@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getHeroBanners } from "@/lib/supabase/queries";
+import { useQuery } from "@/lib/hooks/use-query";
 
-const slides = [
+const fallbackSlides = [
   {
     t1: "SUMMER", t2: "COLLECTION", kicker: "UP TO", percent: "70% OFF",
     sub: "Fresh styles. Hot deals. Limited time only!",
@@ -39,18 +41,39 @@ const slides = [
   },
 ];
 
+type Slide = {
+  t1: string; t2?: string; kicker?: string; percent?: string; sub?: string;
+  gradient?: string; image?: string; lightText?: boolean; href?: string; cta?: string;
+};
+
 export function HeroCarousel() {
   const [current, setCurrent] = useState(0);
+  const { data: banners } = useQuery(() => getHeroBanners(), []);
 
-  const next = useCallback(() => setCurrent((s) => (s + 1) % slides.length), []);
-  const prev = useCallback(() => setCurrent((s) => (s + slides.length - 1) % slides.length), []);
+  // Build slides from DB banners when present, otherwise use the built-in demo slides.
+  const slides: Slide[] = (banners && banners.length)
+    ? banners.map((b: any) => ({
+        t1: b.name || "",
+        sub: b.description || "",
+        image: b.image_desktop || b.image_tablet || b.image_mobile || "",
+        gradient: "linear-gradient(115deg,#0f172a 0%,#1e293b 60%,#334155 100%)",
+        href: b.link_url || "/shop",
+        cta: b.cta_label || "SHOP NOW",
+      }))
+    : fallbackSlides;
 
+  const count = slides.length;
+  const next = useCallback(() => setCurrent((s) => (s + 1) % count), [count]);
+  const prev = useCallback(() => setCurrent((s) => (s + count - 1) % count), [count]);
+
+  useEffect(() => { if (current >= count) setCurrent(0); }, [count, current]);
   useEffect(() => {
+    if (count <= 1) return;
     const timer = setInterval(next, 5000);
     return () => clearInterval(timer);
-  }, [next]);
+  }, [next, count]);
 
-  const slide = slides[current];
+  const slide = slides[Math.min(current, count - 1)] || slides[0];
   const isLight = slide.lightText === false;
   const textColor = isLight ? "text-[#16181d]" : "text-white";
   const kickerAccent = isLight ? "text-[#2563eb]" : "text-[#bcd4ff]";
@@ -65,10 +88,12 @@ export function HeroCarousel() {
       style={{ background: slide.gradient }}
     >
       {/* Banner image */}
-      <div
-        className="absolute inset-0 bg-cover bg-center transition-opacity duration-500"
-        style={{ backgroundImage: `url(${slide.image})` }}
-      />
+      {slide.image && (
+        <div
+          className="absolute inset-0 bg-cover bg-center transition-opacity duration-500"
+          style={{ backgroundImage: `url(${slide.image})` }}
+        />
+      )}
 
       {/* Gradient overlay for text readability */}
       <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-black/25 to-transparent" />
@@ -76,19 +101,21 @@ export function HeroCarousel() {
       {/* Text */}
       <div className="relative z-[2] h-full flex flex-col justify-center px-[26px] sm:px-10 lg:px-14 max-w-none sm:max-w-[70%] lg:max-w-[560px]">
         <div className={cn("text-[40px] sm:text-[48px] lg:text-[54px] leading-[.96] font-extrabold tracking-[-.02em] drop-shadow-[0_2px_8px_rgba(0,0,0,.4)]", textColor)}>{slide.t1}</div>
-        <div className={cn("text-[40px] sm:text-[48px] lg:text-[54px] leading-[1] font-extrabold tracking-[-.02em] mb-1.5 drop-shadow-[0_2px_8px_rgba(0,0,0,.4)]", textColor)}>{slide.t2}</div>
-        <div className={cn("text-[20px] sm:text-[24px] lg:text-[27px] font-bold mb-3.5 drop-shadow-[0_2px_6px_rgba(0,0,0,.3)]", textColor)}>
-          {slide.kicker} <span className={kickerAccent}>{slide.percent}</span>
-        </div>
-        <div className={cn("text-[14px] font-medium mb-[22px] max-w-[330px] leading-[1.5] drop-shadow-[0_1px_4px_rgba(0,0,0,.3)]", subColor)}>{slide.sub}</div>
+        {slide.t2 && <div className={cn("text-[40px] sm:text-[48px] lg:text-[54px] leading-[1] font-extrabold tracking-[-.02em] mb-1.5 drop-shadow-[0_2px_8px_rgba(0,0,0,.4)]", textColor)}>{slide.t2}</div>}
+        {(slide.kicker || slide.percent) && (
+          <div className={cn("text-[20px] sm:text-[24px] lg:text-[27px] font-bold mb-3.5 drop-shadow-[0_2px_6px_rgba(0,0,0,.3)]", textColor)}>
+            {slide.kicker} <span className={kickerAccent}>{slide.percent}</span>
+          </div>
+        )}
+        {slide.sub && <div className={cn("text-[14px] font-medium mb-[22px] max-w-[330px] leading-[1.5] drop-shadow-[0_1px_4px_rgba(0,0,0,.3)]", subColor)}>{slide.sub}</div>}
         <Link
-          href="/shop"
+          href={slide.href || "/shop"}
           className={cn(
             "self-start flex items-center gap-[9px] font-bold text-[14px] py-[13px] px-6 rounded-[999px] shadow-[0_8px_18px_rgba(0,0,0,.18)] hover:brightness-[1.06] active:scale-[.97] transition-[filter,transform] duration-150",
             btnClass
           )}
         >
-          SHOP NOW <ArrowRight className="w-[18px] h-[18px]" />
+          {slide.cta || "SHOP NOW"} <ArrowRight className="w-[18px] h-[18px]" />
         </Link>
       </div>
 

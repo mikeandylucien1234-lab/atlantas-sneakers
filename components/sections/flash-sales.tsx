@@ -11,16 +11,30 @@ import type { Product } from "@/types";
 function pad(n: number) { return String(n).padStart(2, "0"); }
 
 export function FlashSales() {
-  const [total, setTotal] = useState(0);
+  const { data: flashDeals } = useQuery(() => getFlashDeals(), []);
+  const { data: saleProducts } = useQuery(() => getProducts({ sort: "price_asc", limit: 6 }), []);
+  const { data: stripBanners } = useQuery(() => getBannersByLocation("flash_deal_strip"), []);
 
+  // Active banners are already filtered by schedule + ordered by priority.
+  // Rotate through them (highest priority first) every 8s when there are several.
+  const banners = stripBanners || [];
+  const [idx, setIdx] = useState(0);
   useEffect(() => {
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0);
-    setTotal(Math.floor((midnight.getTime() - now.getTime()) / 1000));
-    const timer = setInterval(() => setTotal((t) => (t > 0 ? t - 1 : 0)), 1000);
+    if (banners.length <= 1) { setIdx(0); return; }
+    const t = setInterval(() => setIdx((i) => (i + 1) % banners.length), 8000);
+    return () => clearInterval(t);
+  }, [banners.length]);
+  const strip = banners[idx % Math.max(1, banners.length)] || banners[0];
+
+  // Countdown target: the active banner's end date, else tonight's midnight.
+  const [total, setTotal] = useState(0);
+  useEffect(() => {
+    const target = strip?.ends_at ? new Date(strip.ends_at) : (() => { const m = new Date(); m.setHours(24, 0, 0, 0); return m; })();
+    const tick = () => setTotal(Math.max(0, Math.floor((target.getTime() - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [strip?.ends_at]);
 
   const d = Math.floor(total / 86400);
   const h = Math.floor((total % 86400) / 3600);
@@ -33,10 +47,12 @@ export function FlashSales() {
     { val: pad(s), label: "SECS" },
   ];
 
-  const { data: flashDeals } = useQuery(() => getFlashDeals(), []);
-  const { data: saleProducts } = useQuery(() => getProducts({ sort: "price_asc", limit: 6 }), []);
-  const { data: stripBanners } = useQuery(() => getBannersByLocation("flash_deal_strip"), []);
-  const strip = stripBanners && stripBanners[0];
+  const accent = strip?.cta_color || "#ef4444";
+  const title = strip?.name || "FLASH SALES";
+  const subtitle = strip?.description || "Limited time deals. Grab them before they're gone!";
+  const ctaLabel = strip?.cta_label || "SHOP ALL DEALS";
+  const ctaHref = strip?.link_url || "/deals";
+  const bannerImg = strip?.image_desktop || strip?.image_mobile || strip?.image_tablet;
 
   const items: Array<{ name: string; label: string; price: string; old?: string; disc?: string; slug: string; image?: string }> = [];
 
@@ -65,20 +81,28 @@ export function FlashSales() {
   }
 
   return (
-    <>
-    {strip && (strip.image_desktop || strip.image_mobile) && (
-      <Link href={strip.link_url || "/deals"} className="block mt-10 rounded-[18px] overflow-hidden group">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={strip.image_desktop || strip.image_mobile} alt={strip.alt_text || strip.name || "Flash deal"} className="w-full h-auto object-cover transition-transform duration-300 group-hover:scale-[1.01]" />
-      </Link>
-    )}
     <div className="mt-10 rounded-[18px] overflow-hidden bg-[linear-gradient(120deg,#1a0606_0%,#3b0d0d_45%,#561414_100%)] px-[14px] sm:px-5 lg:px-[22px] py-5">
+      {/* Dynamic Flash Deal banner (image + link from the admin) — integrated
+          inside the section, above the countdown. */}
+      {bannerImg && (
+        <Link href={ctaHref} className="block mb-5 rounded-[14px] overflow-hidden group relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={bannerImg} alt={strip?.alt_text || title} className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-[1.02]" />
+          {banners.length > 1 && (
+            <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+              {banners.map((_, i) => (
+                <span key={i} className={`h-1.5 rounded-full transition-all ${i === idx ? "w-5 bg-white" : "w-1.5 bg-white/50"}`} />
+              ))}
+            </div>
+          )}
+        </Link>
+      )}
       <div className="flex items-center justify-between gap-4 mb-[18px] flex-wrap">
         <div className="flex items-center gap-[13px]">
-          <Zap className="w-[30px] h-[30px] text-[#ffb020] fill-[#ffb020]" />
+          <Zap className="w-[30px] h-[30px]" style={{ color: accent, fill: accent }} />
           <div>
-            <div className="text-[21px] font-extrabold text-white tracking-[-.01em]">FLASH SALES</div>
-            <div className="text-[13px] text-white/65">Limited time deals. Grab them before they&apos;re gone!</div>
+            <div className="text-[21px] font-extrabold text-white tracking-[-.01em]">{title}</div>
+            <div className="text-[13px] text-white/65">{subtitle}</div>
           </div>
         </div>
         <div className="flex items-center gap-[9px]">
@@ -89,8 +113,8 @@ export function FlashSales() {
             </div>
           ))}
         </div>
-        <Link href="/deals" className="flex items-center gap-2 bg-[#ef4444] text-white font-bold text-[13px] py-[13px] px-[22px] rounded-[999px] shadow-[0_8px_18px_rgba(239,68,68,.4)] hover:brightness-[1.06] active:scale-[.97] transition-[filter,transform] duration-150">
-          SHOP ALL DEALS <ArrowRight className="w-[17px] h-[17px]" />
+        <Link href={ctaHref} className="flex items-center gap-2 text-white font-bold text-[13px] py-[13px] px-[22px] rounded-[999px] shadow-[0_8px_18px_rgba(0,0,0,.3)] hover:brightness-[1.06] active:scale-[.97] transition-[filter,transform] duration-150" style={{ backgroundColor: accent }}>
+          {ctaLabel} <ArrowRight className="w-[17px] h-[17px]" />
         </Link>
       </div>
 
@@ -126,6 +150,5 @@ export function FlashSales() {
         }
       </div>
     </div>
-    </>
   );
 }

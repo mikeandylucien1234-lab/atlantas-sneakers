@@ -157,22 +157,27 @@ export async function getFlashDeals() {
   return data as FlashDeal[];
 }
 
-// Active hero-carousel banners for the storefront, ordered by priority.
-export async function getHeroBanners() {
+// Active banners for a given storefront location, in schedule, by priority.
+export async function getBannersByLocation(location: string) {
   const supabase = createClient();
-  const nowIso = new Date().toISOString();
+  const now = new Date();
   const { data, error } = await supabase
     .from("banners")
     .select("*")
-    .eq("location", "hero_carousel")
+    .eq("location", location)
     .eq("is_active", true)
     .order("priority", { ascending: false })
     .order("created_at", { ascending: false });
   if (error) return [];
   return (data || []).filter((b: any) =>
-    (!b.starts_at || new Date(b.starts_at) <= new Date(nowIso)) &&
-    (!b.ends_at || new Date(b.ends_at) >= new Date(nowIso))
+    (!b.starts_at || new Date(b.starts_at) <= now) &&
+    (!b.ends_at || new Date(b.ends_at) >= now)
   );
+}
+
+// Active hero-carousel banners for the storefront, ordered by priority.
+export async function getHeroBanners() {
+  return getBannersByLocation("hero_carousel");
 }
 
 export async function searchProducts(query: string) {

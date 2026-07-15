@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowRight, Zap } from "lucide-react";
-import { getFlashDeals, getProducts } from "@/lib/supabase/queries";
+import { getFlashDeals, getProducts, getBannersByLocation } from "@/lib/supabase/queries";
 import { useQuery } from "@/lib/hooks/use-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Product } from "@/types";
@@ -35,8 +35,10 @@ export function FlashSales() {
 
   const { data: flashDeals } = useQuery(() => getFlashDeals(), []);
   const { data: saleProducts } = useQuery(() => getProducts({ sort: "price_asc", limit: 6 }), []);
+  const { data: stripBanners } = useQuery(() => getBannersByLocation("flash_deal_strip"), []);
+  const strip = stripBanners && stripBanners[0];
 
-  const items: Array<{ name: string; label: string; price: string; old?: string; disc?: string; slug: string }> = [];
+  const items: Array<{ name: string; label: string; price: string; old?: string; disc?: string; slug: string; image?: string }> = [];
 
   if (flashDeals) {
     for (const deal of flashDeals) {
@@ -45,7 +47,7 @@ export function FlashSales() {
       const origPrice = Number(p.price);
       const dealPrice = Number(deal.deal_price);
       const pct = Math.round(((origPrice - dealPrice) / origPrice) * 100);
-      items.push({ name: p.name, label: p.brand?.name?.toUpperCase() ?? "", price: `$${dealPrice.toFixed(2)}`, old: `$${origPrice.toFixed(2)}`, disc: `-${pct}%`, slug: p.slug });
+      items.push({ name: p.name, label: p.brand?.name?.toUpperCase() ?? "", price: `$${dealPrice.toFixed(2)}`, old: `$${origPrice.toFixed(2)}`, disc: `-${pct}%`, slug: p.slug, image: p.images?.[0] });
     }
   }
 
@@ -55,14 +57,21 @@ export function FlashSales() {
       if (items.find((i) => i.slug === p.slug)) continue;
       if (p.compare_price) {
         const pct = Math.round(((Number(p.compare_price) - Number(p.price)) / Number(p.compare_price)) * 100);
-        items.push({ name: p.name, label: p.brand?.name?.toUpperCase() ?? "", price: `$${Number(p.price).toFixed(2)}`, old: `$${Number(p.compare_price).toFixed(2)}`, disc: `-${pct}%`, slug: p.slug });
+        items.push({ name: p.name, label: p.brand?.name?.toUpperCase() ?? "", price: `$${Number(p.price).toFixed(2)}`, old: `$${Number(p.compare_price).toFixed(2)}`, disc: `-${pct}%`, slug: p.slug, image: p.images?.[0] });
       } else {
-        items.push({ name: p.name, label: p.brand?.name?.toUpperCase() ?? "", price: `$${Number(p.price).toFixed(2)}`, slug: p.slug });
+        items.push({ name: p.name, label: p.brand?.name?.toUpperCase() ?? "", price: `$${Number(p.price).toFixed(2)}`, slug: p.slug, image: p.images?.[0] });
       }
     }
   }
 
   return (
+    <>
+    {strip && (strip.image_desktop || strip.image_mobile) && (
+      <Link href={strip.link_url || "/deals"} className="block mt-10 rounded-[18px] overflow-hidden group">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={strip.image_desktop || strip.image_mobile} alt={strip.alt_text || strip.name || "Flash deal"} className="w-full h-auto object-cover transition-transform duration-300 group-hover:scale-[1.01]" />
+      </Link>
+    )}
     <div className="mt-10 rounded-[18px] overflow-hidden bg-[linear-gradient(120deg,#1a0606_0%,#3b0d0d_45%,#561414_100%)] px-[14px] sm:px-5 lg:px-[22px] py-5">
       <div className="flex items-center justify-between gap-4 mb-[18px] flex-wrap">
         <div className="flex items-center gap-[13px]">
@@ -97,8 +106,13 @@ export function FlashSales() {
           : items.map((p) => (
               <Link href={`/product/${p.slug}`} key={p.slug} className="bg-white rounded-[12px] p-[11px] cursor-pointer transition-[transform,box-shadow] duration-[180ms] hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(16,24,40,.12)]">
                 <div className="relative mb-[10px]">
-                  <div className="aspect-square rounded-[9px] bg-[repeating-linear-gradient(135deg,#eef0f3_0,#eef0f3_9px,#e4e7eb_9px,#e4e7eb_18px)] flex items-center justify-center">
-                    <span className="font-mono text-[9px] tracking-[.08em] text-[#9aa3ad]">{p.label}</span>
+                  <div className="aspect-square rounded-[9px] overflow-hidden bg-[repeating-linear-gradient(135deg,#eef0f3_0,#eef0f3_9px,#e4e7eb_9px,#e4e7eb_18px)] flex items-center justify-center">
+                    {p.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.image} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <span className="font-mono text-[9px] tracking-[.08em] text-[#9aa3ad]">{p.label}</span>
+                    )}
                   </div>
                   {p.disc && <span className="absolute top-[7px] left-[7px] bg-[#ef4444] text-white text-[11px] font-extrabold py-[3px] px-[7px] rounded-[6px]">{p.disc}</span>}
                 </div>
@@ -112,5 +126,6 @@ export function FlashSales() {
         }
       </div>
     </div>
+    </>
   );
 }

@@ -42,8 +42,13 @@ export function TrendingNow() {
                   className="bg-white border border-[#eef0f3] rounded-[14px] p-3 cursor-pointer transition-[transform,box-shadow] duration-[180ms] ease-out hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(16,24,40,.12)]"
                 >
                   <div className="relative mb-[11px]">
-                    <div className="aspect-square rounded-[10px] bg-[repeating-linear-gradient(135deg,#eef0f3_0,#eef0f3_9px,#e4e7eb_9px,#e4e7eb_18px)] flex items-center justify-center">
-                      <span className="font-mono text-[9px] tracking-[.08em] text-[#9aa3ad]">{p.brand?.name?.toUpperCase() ?? ""}</span>
+                    <div className="aspect-square rounded-[10px] overflow-hidden bg-[repeating-linear-gradient(135deg,#eef0f3_0,#eef0f3_9px,#e4e7eb_9px,#e4e7eb_18px)] flex items-center justify-center">
+                      {p.images?.[0] ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
+                      ) : (
+                        <span className="font-mono text-[9px] tracking-[.08em] text-[#9aa3ad]">{p.brand?.name?.toUpperCase() ?? ""}</span>
+                      )}
                     </div>
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleItem({ id: p.id, productId: p.id, name: p.name, image: p.images?.[0] ?? "", price: Number(p.price) }); }}

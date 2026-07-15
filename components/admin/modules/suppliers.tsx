@@ -99,12 +99,12 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   const openWizard = async (external_id) => {
     setWizStep(0); setWizard({ loading: true });
     try { const r = await sapi(`/product?id=${external_id}`); if (!r.ok && !r.product) { showToast(r.message || "Cannot load product", "error"); setWizard(null); return; }
-      const pr = r.product; setWizard({ external_id, name: pr.name, slug: "", description: pr.description || pr.name, category_id: "", brand_id: "", tags: "", price: null, compare_price: null, supplier_price: pr.supplier_price, images: pr.images || (pr.main_image ? [pr.main_image] : []), meta_title: pr.name, meta_description: (pr.description || "").slice(0, 160), is_featured: false, is_new: true, status: "draft", variants: pr.variants || [], detail: pr }); }
+      const pr = r.product; setWizard({ external_id, name: pr.name, slug: "", description: pr.description || pr.name, category_id: "", brand_id: "", tags: "", price: null, compare_price: null, supplier_price: pr.supplier_price, images: pr.images || (pr.main_image ? [pr.main_image] : []), meta_title: pr.name, meta_description: (pr.description || "").slice(0, 160), is_featured: false, is_new: true, is_trending: false, is_best_seller: false, flash_sale: false, status: "draft", variants: pr.variants || [], detail: pr }); }
     catch (e) { showToast(e.message, "error"); setWizard(null); }
   };
   const publish = async () => {
     const w = wizard;
-    const overrides = { name: w.name, slug: w.slug || undefined, description: w.description, category_id: w.category_id || undefined, brand_id: w.brand_id || undefined, tags: w.tags ? w.tags.split(",").map(x => x.trim()) : undefined, price: w.price ?? undefined, compare_price: w.compare_price ?? undefined, supplier_price: w.supplier_price, images: w.images, meta_title: w.meta_title, meta_description: w.meta_description, is_featured: w.is_featured, is_new: w.is_new, status: w.status, variants: w.variants, detail: w.detail };
+    const overrides = { name: w.name, slug: w.slug || undefined, description: w.description, category_id: w.category_id || undefined, brand_id: w.brand_id || undefined, tags: w.tags ? w.tags.split(",").map(x => x.trim()) : undefined, price: w.price ?? undefined, compare_price: w.compare_price ?? undefined, supplier_price: w.supplier_price, images: w.images, meta_title: w.meta_title, meta_description: w.meta_description, is_featured: w.is_featured, is_new: w.is_new, is_trending: w.is_trending, is_best_seller: w.is_best_seller, flash_sale: w.flash_sale, status: w.status, variants: w.variants, detail: w.detail };
     await post("/import", { external_id: w.external_id, overrides }, (r) => `Imported → product created`, () => { setWizard(null); loadDash(); });
   };
 
@@ -374,7 +374,21 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
               {wizStep === 4 && <div className="space-y-3"><div><label className={labelCls}>Meta Title</label><input value={wizard.meta_title} onChange={e => setWizard(w => ({ ...w, meta_title: e.target.value }))} className={inpCls} /></div><div><label className={labelCls}>Meta Description</label><textarea rows={3} value={wizard.meta_description} onChange={e => setWizard(w => ({ ...w, meta_description: e.target.value }))} className={cn("w-full rounded-[11px] border-[1.5px] px-3 py-2 text-sm", inpBg, "focus:border-[#2563eb]")} /></div><div><label className={labelCls}>Tags (comma)</label><input value={wizard.tags} onChange={e => setWizard(w => ({ ...w, tags: e.target.value }))} className={inpCls} placeholder="sneakers, running" /></div></div>}
               {wizStep === 5 && <div className={cn("rounded-[10px] border p-4", brd)}><p className={cn("text-sm font-bold", txt)}>Shipping</p><p className={cn("text-xs mt-1", sub)}>Processing time: {wizard.detail?.processing_time || "—"}. Shipping methods & costs sync from the supplier and can be refined in Shipping Rules. Weight: {wizard.detail?.weight || "—"}.</p></div>}
               {wizStep === 6 && <div className={cn("rounded-[10px] border p-4", brd)}><p className={cn("text-sm font-bold", txt)}>Inventory</p><p className={cn("text-xs mt-1", sub)}>Stock is imported from variants and kept in sync via the Inventory engine. Total stock: {wizard.variants.reduce((a, v) => a + (v.stock || 0), 0)}.</p></div>}
-              {wizStep === 7 && <div className="space-y-2"><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={wizard.is_featured} onChange={e => setWizard(w => ({ ...w, is_featured: e.target.checked }))} className="rounded" /><span className={cn("text-sm", txt)}>Featured product</span></label><label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={wizard.is_new} onChange={e => setWizard(w => ({ ...w, is_new: e.target.checked }))} className="rounded" /><span className={cn("text-sm", txt)}>Mark as New</span></label><div><label className={labelCls}>Status</label><select value={wizard.status} onChange={e => setWizard(w => ({ ...w, status: e.target.value }))} className={inpCls}><option value="draft">Draft</option><option value="active">Active (publish)</option></select></div></div>}
+              {wizStep === 7 && <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>Show this product in these sections</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[["is_new", "New Arrivals"], ["is_trending", "Trending Now"], ["is_best_seller", "Best Sellers"], ["flash_sale", "Flash Sales"], ["is_featured", "Featured"]].map(([k, l]) => (
+                      <label key={k} className={cn("flex items-center gap-2 cursor-pointer rounded-[10px] border px-3 py-2", brd, wizard[k] ? "border-[#2563eb]" : "")}>
+                        <input type="checkbox" checked={!!wizard[k]} onChange={e => setWizard(w => ({ ...w, [k]: e.target.checked }))} className="rounded" />
+                        <span className={cn("text-sm font-semibold", txt)}>{l}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className={cn("text-[11px] mt-1.5", sub)}>Choose exactly where this product appears on the storefront so it isn't scattered everywhere.</p>
+                </div>
+                <div><label className={labelCls}>Status</label><select value={wizard.status} onChange={e => setWizard(w => ({ ...w, status: e.target.value }))} className={inpCls}><option value="draft">Draft</option><option value="active">Active (publish)</option></select></div>
+              </div>}
               {wizStep === 8 && <div className="space-y-2"><p className={cn("text-sm font-extrabold", txt)}>Review</p>{[["Name", wizard.name], ["Price", `$${wizard.price ?? "auto"}`], ["Images", wizard.images.length], ["Variants", wizard.variants.length], ["Status", wizard.status]].map(([l, v]) => <div key={l} className="flex justify-between text-xs"><span className={sub}>{l}</span><span className={cn("font-bold", txt)}>{v}</span></div>)}</div>}
               {wizStep === 9 && <div className={cn("rounded-[10px] border p-4 text-center", brd)}><Package className={cn("w-8 h-8 mx-auto mb-2", txt)} /><p className={cn("text-sm font-bold", txt)}>Ready to publish</p><p className={cn("text-xs mt-1", sub)}>A real product will be created in your catalog with variants, images and pricing.</p></div>}
 

@@ -113,7 +113,15 @@ export async function getBrands() {
   return data as Brand[];
 }
 
+// Trending Now — products explicitly flagged as trending (falls back to
+// featured so the section is never empty on a fresh catalog).
 export async function getFeaturedProducts() {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("products").select(PRODUCT_SELECT)
+    .eq("status", "active").eq("is_trending", true)
+    .order("created_at", { ascending: false }).limit(8);
+  if (data && data.length) return data as Product[];
   return getProducts({ isFeatured: true, limit: 8 });
 }
 
@@ -121,17 +129,20 @@ export async function getNewArrivals() {
   return getProducts({ isNew: true, sort: "newest", limit: 8 });
 }
 
+// Best Sellers — products explicitly flagged as best sellers (falls back to
+// featured so the section is never empty).
 export async function getBestSellers() {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select(PRODUCT_SELECT)
-    .eq("status", "active")
-    .eq("is_featured", true)
-    .order("created_at", { ascending: true })
-    .limit(8);
-  if (error) throw error;
-  return data as Product[];
+  const { data } = await supabase
+    .from("products").select(PRODUCT_SELECT)
+    .eq("status", "active").eq("is_best_seller", true)
+    .order("created_at", { ascending: false }).limit(8);
+  if (data && data.length) return data as Product[];
+  const { data: fb } = await supabase
+    .from("products").select(PRODUCT_SELECT)
+    .eq("status", "active").eq("is_featured", true)
+    .order("created_at", { ascending: true }).limit(8);
+  return (fb || []) as Product[];
 }
 
 export async function getFlashDeals() {

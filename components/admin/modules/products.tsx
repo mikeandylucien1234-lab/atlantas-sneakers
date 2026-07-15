@@ -128,6 +128,9 @@ export function AdminProducts({ dark, onNavigate }: Props) {
   const [formStatus, setFormStatus] = useState<"active" | "draft">("active");
   const [formFeatured, setFormFeatured] = useState(false);
   const [formNew, setFormNew] = useState(false);
+  const [formTrending, setFormTrending] = useState(false);
+  const [formBestSeller, setFormBestSeller] = useState(false);
+  const [formFlashSale, setFormFlashSale] = useState(false);
   const [formVariants, setFormVariants] = useState<VariantRow[]>([{ size: "", color: "", color_hex: "", stock: 0, sku: "" }]);
   const [formSaving, setFormSaving] = useState(false);
 
@@ -233,6 +236,7 @@ export function AdminProducts({ dark, onNavigate }: Props) {
     setFormName(""); setFormDescription(""); setFormCategoryId(""); setFormBrandId("");
     setFormPrice(""); setFormComparePrice(""); setFormImages(""); setFormTags("");
     setFormStatus("active"); setFormFeatured(false); setFormNew(false);
+    setFormTrending(false); setFormBestSeller(false); setFormFlashSale(false);
     setFormVariants([{ size: "", color: "", color_hex: "", stock: 0, sku: "" }]);
     setFormOpen(true);
   };
@@ -250,6 +254,17 @@ export function AdminProducts({ dark, onNavigate }: Props) {
     setFormStatus(prod.status === "archived" ? "draft" : prod.status as "active" | "draft");
     setFormFeatured(prod.is_featured);
     setFormNew(prod.is_new);
+    setFormTrending((prod as any).is_trending || false);
+    setFormBestSeller((prod as any).is_best_seller || false);
+    setFormFlashSale(false);
+    // Detect active Flash Sale membership from the DB.
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.from("flash_deals").select("id").eq("product_id", prod.id).eq("is_active", true).limit(1);
+        if (data && data.length) setFormFlashSale(true);
+      } catch { /* ignore */ }
+    })();
     setFormVariants(
       (prod.variants || []).map(v => ({
         id: v.id, size: v.size, color: v.color || "",
@@ -273,26 +288,50 @@ export function AdminProducts({ dark, onNavigate }: Props) {
         images: formImages ? formImages.split(",").map(s => s.trim()).filter(Boolean) : [],
         tags: formTags ? formTags.split(",").map(s => s.trim()).filter(Boolean) : [],
         status: formStatus, is_featured: formFeatured, is_new: formNew,
+        is_trending: formTrending, is_best_seller: formBestSeller,
         variants: formVariants.filter(v => v.size),
       };
 
-      if (editProduct) {
+      let savedId = editProduct?.id;
+      const apiMethod = editProduct ? "PUT" : "POST";
+      let apiOk = false;
+      try {
         const res = await fetch("/api/admin/products", {
-          method: "PUT",
+          method: apiMethod,
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: editProduct.id, ...payload }),
+          body: JSON.stringify(editProduct ? { id: editProduct.id, ...payload } : payload),
         });
-        if (!res.ok) throw new Error("Failed to update product");
-        showToast("Product updated");
-      } else {
-        const res = await fetch("/api/admin/products", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error("Failed to create product");
-        showToast("Product created");
+        apiOk = res.ok;
+        if (res.ok) { const j = await res.json().catch(() => ({})); savedId = j?.id || j?.product?.id || savedId; }
+      } catch { /* method blocked — fall through */ }
+
+      if (!apiOk) {
+        // Direct authenticated fallback (o2switch blocks PUT/POST on API routes).
+        const supabase = createClient();
+        const { data: session } = await supabase.auth.getSession();
+        if (!session?.session) throw new Error("Session expired — refresh and sign in again.");
+        const { variants, ...prodFields } = payload;
+        if (editProduct) {
+          const { error } = await supabase.from("products").update(prodFields).eq("id", editProduct.id);
+          if (error) throw new Error(error.message);
+          savedId = editProduct.id;
+        } else {
+          const { data: created, error } = await supabase.from("products").insert(prodFields).select("id").single();
+          if (error) throw new Error(error.message);
+          savedId = created.id;
+        }
+        // Sync variants
+        if (savedId) {
+          await supabase.from("product_variants").delete().eq("product_id", savedId);
+          const vrows = variants.map(v => ({ product_id: savedId, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, stock: v.stock ?? 0, sku: v.sku || null }));
+          if (vrows.length) await supabase.from("product_variants").insert(vrows);
+        }
       }
+
+      // Flash Sale membership
+      if (savedId) await syncFlashSale(savedId, formFlashSale, Number(formPrice));
+
+      showToast(editProduct ? "Product updated" : "Product created");
       setFormOpen(false);
       fetchProducts();
       fetchKpis();
@@ -335,6 +374,27 @@ export function AdminProducts({ dark, onNavigate }: Props) {
     await supabase.from("product_variants").delete().in("product_id", ids);
     const { error } = await supabase.from("products").delete().in("id", ids);
     if (error) throw new Error(error.message);
+  };
+
+  // Add/remove a product from Flash Sales. Enabling creates an active
+  // flash_deals row (30-day window, deal price = current sale price);
+  // disabling deactivates any existing deals for the product.
+  const syncFlashSale = async (productId: string, enabled: boolean, price: number) => {
+    try {
+      const supabase = createClient();
+      if (enabled) {
+        const { data: existing } = await supabase.from("flash_deals").select("id").eq("product_id", productId).limit(1);
+        const now = new Date();
+        const ends = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
+        if (existing && existing.length) {
+          await supabase.from("flash_deals").update({ is_active: true, deal_price: price, starts_at: now.toISOString(), ends_at: ends.toISOString() }).eq("product_id", productId);
+        } else {
+          await supabase.from("flash_deals").insert({ product_id: productId, deal_price: price, starts_at: now.toISOString(), ends_at: ends.toISOString(), is_active: true });
+        }
+      } else {
+        await supabase.from("flash_deals").update({ is_active: false }).eq("product_id", productId);
+      }
+    } catch { /* non-fatal */ }
   };
 
   // ──── ARCHIVE ────
@@ -977,6 +1037,18 @@ export function AdminProducts({ dark, onNavigate }: Props) {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={formNew} onChange={e => setFormNew(e.target.checked)} className="rounded" />
                   <span className={cn("text-sm font-semibold", txt)}>New Arrival</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formTrending} onChange={e => setFormTrending(e.target.checked)} className="rounded" />
+                  <span className={cn("text-sm font-semibold", txt)}>Trending Now</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formBestSeller} onChange={e => setFormBestSeller(e.target.checked)} className="rounded" />
+                  <span className={cn("text-sm font-semibold", txt)}>Best Seller</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formFlashSale} onChange={e => setFormFlashSale(e.target.checked)} className="rounded" />
+                  <span className={cn("text-sm font-semibold", txt)}>Flash Sale</span>
                 </label>
               </div>
 

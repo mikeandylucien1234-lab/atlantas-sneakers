@@ -111,9 +111,17 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
     price, compare_price: comparePrice, images,
     category_id: categoryId || null, brand_id: overrides.brand_id || null,
     status: overrides.status || "draft", is_featured: !!overrides.is_featured, is_new: overrides.is_new !== false,
+    is_trending: !!overrides.is_trending, is_best_seller: !!overrides.is_best_seller,
     tags: overrides.tags || null, meta_title: overrides.meta_title || name, meta_description: metaDesc,
   }).select("id").single();
   if (error) return { ok: false, error: error.message };
+
+  // Optional: add the imported product to Flash Sales (30-day window).
+  if (overrides.flash_sale) {
+    const now = new Date();
+    const ends = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
+    await s.from("flash_deals").insert({ product_id: product.id, deal_price: price, starts_at: now.toISOString(), ends_at: ends.toISOString(), is_active: true }).then(() => {}, () => {});
+  }
 
   // Variants
   const variants = overrides.variants || detail.variants || [];

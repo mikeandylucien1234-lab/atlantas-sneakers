@@ -142,8 +142,15 @@ export async function POST(request: NextRequest) {
       total,
       discount,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("create-intent error:", err);
-    return Response.json({ error: "Failed to create payment intent" }, { status: 500 });
+    // Surface the real reason so the customer/admin can act on it instead of a
+    // generic message. Stripe errors carry a human-readable `message`.
+    const msg = err?.raw?.message || err?.message || "Failed to create payment intent";
+    let hint = msg;
+    if (/api key|no api key|authentication/i.test(msg)) {
+      hint = "Stripe is not configured on the server (missing or invalid STRIPE_SECRET_KEY). Please set the live secret key in the server environment.";
+    }
+    return Response.json({ error: hint }, { status: 500 });
   }
 }

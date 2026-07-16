@@ -3,28 +3,49 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowRight, Zap } from "lucide-react";
-import { getFlashDeals, getProducts } from "@/lib/supabase/queries";
+import { getFlashDeals, getProducts, getBannersByLocation } from "@/lib/supabase/queries";
 import { useQuery } from "@/lib/hooks/use-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Product } from "@/types";
 
 function pad(n: number) { return String(n).padStart(2, "0"); }
 
-// FLASH SALE — the main promotional event section: its own countdown, its own
-// discounted products. Fully independent from the Flash Deal banner module.
+// FLASH SALE — the main promotional event section. Its header (image, title,
+// subtitle, CTA, colors, link and countdown target) is driven by the
+// flash_deal_strip banner in the admin, fully editable without code changes.
+// The discounted products render directly under this integrated header.
 export function FlashSales() {
   const { data: flashDeals } = useQuery(() => getFlashDeals(), []);
   const { data: saleProducts } = useQuery(() => getProducts({ sort: "price_asc", limit: 6 }), []);
+  const { data: bannerData } = useQuery(() => getBannersByLocation("flash_deal_strip"), []);
 
-  // Main Flash Sale countdown — resets to tonight's midnight.
+  // Rotate between active banners (already priority-ordered & in-schedule).
+  const banners = bannerData || [];
+  const [bIdx, setBIdx] = useState(0);
+  useEffect(() => {
+    if (banners.length <= 1) { setBIdx(0); return; }
+    const t = setInterval(() => setBIdx((i) => (i + 1) % banners.length), 8000);
+    return () => clearInterval(t);
+  }, [banners.length]);
+  const banner = banners[bIdx % Math.max(1, banners.length)] || banners[0];
+
+  // Dynamic header fields (fall back to sensible defaults when no banner).
+  const bgImage = banner?.image_desktop || banner?.image_mobile || banner?.image_tablet;
+  const title = banner?.name || "FLASH SALES";
+  const subtitle = banner?.description || "Limited time deals. Grab them before they're gone!";
+  const ctaLabel = banner?.cta_label || "SHOP ALL DEALS";
+  const ctaHref = banner?.link_url || "/deals";
+  const accent = banner?.cta_color || "#ef4444";
+
+  // Countdown target = banner end date, else tonight's midnight.
   const [total, setTotal] = useState(0);
   useEffect(() => {
-    const target = (() => { const m = new Date(); m.setHours(24, 0, 0, 0); return m; })();
+    const target = banner?.ends_at ? new Date(banner.ends_at) : (() => { const m = new Date(); m.setHours(24, 0, 0, 0); return m; })();
     const tick = () => setTotal(Math.max(0, Math.floor((target.getTime() - Date.now()) / 1000)));
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [banner?.ends_at]);
 
   const d = Math.floor(total / 86400);
   const h = Math.floor((total % 86400) / 3600);
@@ -65,25 +86,45 @@ export function FlashSales() {
 
   return (
     <div className="mt-10 rounded-[18px] overflow-hidden bg-[linear-gradient(120deg,#1a0606_0%,#3b0d0d_45%,#561414_100%)] px-[14px] sm:px-5 lg:px-[22px] py-5">
-      <div className="flex items-center justify-between gap-4 mb-[18px] flex-wrap">
-        <div className="flex items-center gap-[13px]">
-          <Zap className="w-[30px] h-[30px] text-[#ffb020] fill-[#ffb020]" />
-          <div>
-            <div className="text-[21px] font-extrabold text-white tracking-[-.01em]">FLASH SALES</div>
-            <div className="text-[13px] text-white/65">Limited time deals. Grab them before they&apos;re gone!</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-[9px]">
-          {countdown.map((t) => (
-            <div key={t.label} className="text-center">
-              <div className="bg-[#0d0303] border border-white/[.12] rounded-[9px] min-w-[48px] py-2 px-1.5 text-[21px] font-extrabold text-white tabular-nums">{t.val}</div>
-              <div className="text-[9px] font-bold tracking-[.12em] text-white/55 mt-[5px]">{t.label}</div>
+      {/* Integrated Flash Deal banner header — image as background (right-anchored),
+          title/subtitle/countdown/CTA overlaid. All fields dynamic from admin. */}
+      <div className="relative rounded-[14px] overflow-hidden mb-[18px] -mx-[14px] sm:-mx-5 lg:-mx-[22px] -mt-5">
+        {bgImage && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={bgImage} alt={banner?.alt_text || title} className="absolute inset-0 w-full h-full object-cover object-right" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/60 to-black/10" />
+          </>
+        )}
+        <div className="relative z-[1] px-[14px] sm:px-5 lg:px-[22px] py-6">
+          <div className="flex items-center gap-[13px] mb-4">
+            <Zap className="w-[30px] h-[30px] shrink-0" style={{ color: accent, fill: accent }} />
+            <div>
+              <div className="text-[22px] sm:text-[26px] font-extrabold text-white tracking-[-.01em] drop-shadow-[0_2px_6px_rgba(0,0,0,.5)]">{title}</div>
+              <div className="text-[13px] text-white/80 max-w-[520px] drop-shadow-[0_1px_3px_rgba(0,0,0,.5)]">{subtitle}</div>
             </div>
-          ))}
+          </div>
+          <div className="flex items-end gap-4 flex-wrap">
+            <div className="flex items-center gap-[9px]">
+              {countdown.map((t) => (
+                <div key={t.label} className="text-center">
+                  <div className="bg-black/60 border border-white/[.15] rounded-[9px] min-w-[48px] py-2 px-1.5 text-[21px] font-extrabold text-white tabular-nums">{t.val}</div>
+                  <div className="text-[9px] font-bold tracking-[.12em] text-white/70 mt-[5px]">{t.label}</div>
+                </div>
+              ))}
+            </div>
+            <Link href={ctaHref} className="flex items-center gap-2 text-white font-bold text-[13px] py-[13px] px-[22px] rounded-[999px] shadow-[0_8px_18px_rgba(0,0,0,.35)] hover:brightness-[1.06] active:scale-[.97] transition-[filter,transform] duration-150" style={{ backgroundColor: accent }}>
+              {ctaLabel} <ArrowRight className="w-[17px] h-[17px]" />
+            </Link>
+          </div>
+          {banners.length > 1 && (
+            <div className="flex gap-1.5 mt-4">
+              {banners.map((_, i) => (
+                <span key={i} className={`h-1.5 rounded-full transition-all ${i === bIdx ? "w-5 bg-white" : "w-1.5 bg-white/50"}`} />
+              ))}
+            </div>
+          )}
         </div>
-        <Link href="/deals" className="flex items-center gap-2 bg-[#ef4444] text-white font-bold text-[13px] py-[13px] px-[22px] rounded-[999px] shadow-[0_8px_18px_rgba(239,68,68,.4)] hover:brightness-[1.06] active:scale-[.97] transition-[filter,transform] duration-150">
-          SHOP ALL DEALS <ArrowRight className="w-[17px] h-[17px]" />
-        </Link>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

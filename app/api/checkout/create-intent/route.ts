@@ -139,6 +139,10 @@ export async function POST(request: NextRequest) {
     return Response.json({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
+      // Return the publishable key so the client loads Stripe.js with the exact
+      // key configured on the server (avoids build-time inlining mismatches and
+      // guarantees the key mode matches the secret key that created the intent).
+      publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY || null,
       total,
       discount,
     });

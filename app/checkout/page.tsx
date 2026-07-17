@@ -12,7 +12,16 @@ import { useAuthStore } from "@/lib/store/auth-store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+import type { Stripe } from "@stripe/stripe-js";
+
+// Cache loadStripe promises per publishable key so we only initialize once.
+const _stripePromises: Record<string, Promise<Stripe | null>> = {};
+function getStripePromise(pk: string | null | undefined) {
+  const key = pk || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
+  if (!key) return null;
+  if (!_stripePromises[key]) _stripePromises[key] = loadStripe(key);
+  return _stripePromises[key];
+}
 
 const stepLabels = ["Address", "Shipping", "Payment", "Review", "Confirm"];
 
@@ -190,6 +199,7 @@ export default function CheckoutPage() {
   const [bankRef, setBankRef] = useState("");
 
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [publishableKey, setPublishableKey] = useState<string | null>(null);
   const [orderNumber, setOrderNumber] = useState("");
   const [intentError, setIntentError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -307,7 +317,7 @@ export default function CheckoutPage() {
         }),
       })
         .then((res) => res.json())
-        .then((data) => { if (data.clientSecret) setClientSecret(data.clientSecret); else setIntentError(data.error ?? "Failed to initialize payment"); })
+        .then((data) => { if (data.clientSecret) { setClientSecret(data.clientSecret); setPublishableKey(data.publishableKey ?? null); } else setIntentError(data.error ?? "Failed to initialize payment"); })
         .catch(() => setIntentError("Network error. Please try again."));
     }
   }, [step, clientSecret, items, shippingCost, coupon, user, paymentMethod]);
@@ -615,10 +625,19 @@ export default function CheckoutPage() {
                       <span className="ml-3 text-[14px] text-[#5b6472]">Initializing secure payment...</span>
                     </div>
                   )}
-                  {clientSecret && (
-                    <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "stripe", variables: { borderRadius: "12px", fontFamily: "var(--font-sans)", colorPrimary: "#2563eb" } } }}>
+                  {clientSecret && getStripePromise(publishableKey) && (
+                    <Elements
+                      key={clientSecret}
+                      stripe={getStripePromise(publishableKey)!}
+                      options={{ clientSecret, appearance: { theme: "stripe", variables: { borderRadius: "12px", fontFamily: "system-ui, sans-serif", colorPrimary: "#2563eb" } } }}
+                    >
                       <StripePaymentForm onSuccess={handlePaymentSuccess} onBack={() => setStep(3)} totalAmount={grandTotal} />
                     </Elements>
+                  )}
+                  {clientSecret && !getStripePromise(publishableKey) && (
+                    <div className="p-3 bg-[#fef2f2] border border-[#fecaca] rounded-[10px] text-[13px] text-[#ef4444] font-semibold">
+                      Stripe publishable key is missing. Set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY on the server and restart.
+                    </div>
                   )}
                 </>
               )}

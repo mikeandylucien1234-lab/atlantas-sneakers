@@ -125,6 +125,9 @@ export async function POST(request: NextRequest) {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: "usd",
+      // Required for the Payment Element to render available methods (cards,
+      // wallets…). Without this the Payment Element shows no fields at all.
+      automatic_payment_methods: { enabled: true },
       metadata: {
         userId: user.id,
         itemCount: String(items.length),

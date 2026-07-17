@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -82,11 +82,68 @@ export function HeroCarousel() {
     ? "bg-[#2563eb] text-white"
     : "bg-white text-[#0a0b0d]";
 
+  // Mobile scroll-snap carousel state
+  const mobileRef = useRef<HTMLDivElement>(null);
+  const [mobileIdx, setMobileIdx] = useState(0);
+  const onMobileScroll = () => {
+    const el = mobileRef.current;
+    if (!el || count === 0) return;
+    const idx = Math.round(el.scrollLeft / (el.scrollWidth / count));
+    setMobileIdx(Math.max(0, Math.min(count - 1, idx)));
+  };
+
   return (
-    <div
-      className="relative rounded-[18px] overflow-hidden h-[330px] sm:h-[390px] lg:h-[430px] shadow-[0_18px_40px_rgba(16,24,40,.16)] transition-[background] duration-500"
-      style={{ background: slide.gradient }}
-    >
+    <>
+      {/* MOBILE: flat horizontal banner carousel with peek + snap + dots */}
+      <div className="sm:hidden">
+        <div
+          ref={mobileRef}
+          onScroll={onMobileScroll}
+          className="flex gap-3 overflow-x-auto snap-x snap-mandatory px-[7.5%] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {slides.map((s, i) => (
+            <Link
+              key={i}
+              href={s.href || "/shop"}
+              className="relative shrink-0 w-[85%] h-[170px] snap-center rounded-[16px] overflow-hidden shadow-[0_10px_24px_rgba(16,24,40,.14)]"
+              style={{ background: s.gradient }}
+            >
+              {s.image && (
+                <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${s.image})` }} />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/35 to-transparent" />
+              <div className="relative z-[1] h-full flex flex-col justify-center px-4 max-w-[68%]">
+                <div className="text-white text-[19px] font-extrabold leading-[1.05] tracking-[-.01em] drop-shadow-[0_2px_6px_rgba(0,0,0,.5)] line-clamp-2">
+                  {s.t1}{s.t2 ? ` ${s.t2}` : ""}
+                </div>
+                {(s.kicker || s.percent) && (
+                  <div className="text-white text-[13px] font-bold mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,.5)]">{s.kicker} <span className="text-[#bcd4ff]">{s.percent}</span></div>
+                )}
+                {s.sub && <div className="text-white/85 text-[11px] mt-1 leading-snug line-clamp-2 drop-shadow-[0_1px_3px_rgba(0,0,0,.5)]">{s.sub}</div>}
+                <span className="self-start mt-2.5 inline-flex items-center gap-1.5 bg-white text-[#0a0b0d] font-bold text-[11px] py-2 px-3.5 rounded-full">
+                  {s.cta || "SHOP NOW"} <ArrowRight className="w-[13px] h-[13px]" />
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+        {/* Dots */}
+        <div className="flex justify-center gap-[6px] mt-3">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => { const el = mobileRef.current; if (el) el.scrollTo({ left: (el.scrollWidth / count) * i, behavior: "smooth" }); }}
+              className={cn("h-1.5 rounded-full transition-all", i === mobileIdx ? "w-5 bg-[#2563eb]" : "w-1.5 bg-[#cbd5e1]")}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* DESKTOP / TABLET: original carousel (unchanged) */}
+      <div
+        className="hidden sm:block relative rounded-[18px] overflow-hidden h-[390px] lg:h-[430px] shadow-[0_18px_40px_rgba(16,24,40,.16)] transition-[background] duration-500"
+        style={{ background: slide.gradient }}
+      >
       {/* Banner image */}
       {slide.image && (
         <div
@@ -146,6 +203,7 @@ export function HeroCarousel() {
           />
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

@@ -105,6 +105,8 @@ function StripePaymentForm({ onSuccess, onBack, totalAmount }: { onSuccess: (ord
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,13 +123,28 @@ function StripePaymentForm({ onSuccess, onBack, totalAmount }: { onSuccess: (ord
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="border border-[#eef0f3] rounded-[14px] p-4">
-        <PaymentElement options={{ layout: "tabs" }} />
+      <div className="border border-[#eef0f3] rounded-[14px] p-4 min-h-[60px]">
+        {!ready && !loadError && (
+          <div className="flex items-center justify-center py-6 text-[13px] text-[#5b6472]">
+            <Loader2 className="w-5 h-5 animate-spin text-[#2563eb] mr-2" /> Loading secure card form…
+          </div>
+        )}
+        {loadError && (
+          <div className="p-3 bg-[#fef2f2] border border-[#fecaca] rounded-[10px] text-[13px] text-[#ef4444] font-semibold">
+            {loadError}
+            <div className="text-[12px] font-normal mt-1 text-[#7a1f1f]">If you use an ad-blocker or browser shields (e.g. Brave), disable them for this site — they can block the Stripe payment form.</div>
+          </div>
+        )}
+        <PaymentElement
+          options={{ layout: "tabs" }}
+          onReady={() => setReady(true)}
+          onLoadError={(e) => setLoadError(e?.error?.message || "The payment form failed to load.")}
+        />
       </div>
       {error && <div className="mt-4 p-3 bg-[#fef2f2] border border-[#fecaca] rounded-[10px] text-[13px] text-[#ef4444] font-semibold">{error}</div>}
       <div className="flex gap-3 mt-6">
         <Button type="button" variant="outline" size="lg" onClick={onBack} disabled={processing}>Back</Button>
-        <Button type="submit" size="lg" className="flex-1" disabled={!stripeHook || processing}>
+        <Button type="submit" size="lg" className="flex-1" disabled={!stripeHook || processing || !ready}>
           {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</> : <>Pay ${totalAmount.toFixed(2)}</>}
         </Button>
       </div>

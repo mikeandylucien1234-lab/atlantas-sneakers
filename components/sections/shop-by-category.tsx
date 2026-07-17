@@ -26,12 +26,13 @@ export function ShopByCategory() {
           View all <ArrowRight className="w-[15px] h-[15px]" />
         </Link>
       </div>
-      {/* Mobile: horizontal scroll, 4 visible at a time · tablet 3 cols · desktop 5 cols */}
-      <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:gap-x-4 sm:gap-y-6 sm:overflow-visible sm:pb-0">
+      {/* Mobile: 2 rows of 4 (top + bottom), horizontal scroll for more.
+          Tablet 3 cols · desktop 5 cols. */}
+      <div className="grid grid-rows-2 grid-flow-col auto-cols-[24%] gap-x-2 gap-y-5 overflow-x-auto pb-2 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid-rows-none sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-3 lg:grid-cols-5 sm:gap-x-4 sm:gap-y-6 sm:overflow-visible sm:pb-0">
         {categories.map(({ name, slug, img, tint }) => (
-          <Link key={slug} href={`/category/${slug}`} className="flex flex-col items-center gap-2.5 group shrink-0 basis-1/4 snap-start sm:basis-auto sm:shrink">
+          <Link key={slug} href={`/category/${slug}`} className="flex flex-col items-center gap-2 group snap-start">
             <div
-              className="w-[74px] sm:w-[116px] aspect-square rounded-full overflow-hidden ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)]"
+              className="w-[70px] sm:w-[116px] aspect-square rounded-full overflow-hidden ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)]"
               style={{ background: `${tint}18` }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}

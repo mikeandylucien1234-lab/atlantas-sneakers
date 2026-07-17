@@ -180,6 +180,18 @@ export async function getHeroBanners() {
   return getBannersByLocation("hero_carousel");
 }
 
+// Active coupons for the storefront "Special Offers" section.
+export async function getActiveCoupons() {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("coupons")
+    .select("code, type, value, min_order")
+    .eq("is_active", true)
+    .order("value", { ascending: false });
+  if (error) return [];
+  return data || [];
+}
+
 export async function searchProducts(query: string) {
   return getProducts({ search: query, limit: 20 });
 }

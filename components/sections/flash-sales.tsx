@@ -10,6 +10,17 @@ import type { Product } from "@/types";
 
 function pad(n: number) { return String(n).padStart(2, "0"); }
 
+// Categories shown inside the "Explore Your Interests" card (photo + name).
+const IIMG = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=120&h=120&q=70`;
+const INTERESTS = [
+  { name: "Men's Jewelry", slug: "accessories", img: IIMG("1611591437281-460bfbe1220a") },
+  { name: "Sunglasses", slug: "sunglasses", img: IIMG("1572635196237-14b3f281503f") },
+  { name: "Headphones", slug: "headphones", img: IIMG("1505740420928-5e560c06d30e") },
+  { name: "Watches", slug: "watches", img: IIMG("1523275335684-37898b6baf30") },
+  { name: "Hoodies", slug: "hoodies", img: IIMG("1556821840-3a63f95609a7") },
+  { name: "Bags", slug: "bags", img: IIMG("1553062407-98eeb64c6a62") },
+];
+
 // FLASH SALE — the main promotional event section. Its header (image, title,
 // subtitle, CTA, colors, link and countdown target) is driven by the
 // flash_deal_strip banner in the admin, fully editable without code changes.
@@ -127,7 +138,20 @@ export function FlashSales() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 [grid-auto-flow:dense]">
+        {/* Explore Your Interests — one grid cell, spans 2 rows, scrollable list */}
+        <div className="row-span-2 bg-white rounded-[12px] p-3 flex flex-col min-h-0">
+          <p className="text-[13px] font-extrabold text-[#16181d] mb-2 shrink-0">Explore Your Interests</p>
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 [scrollbar-width:thin]">
+            {INTERESTS.map((it) => (
+              <Link key={it.slug} href={`/category/${it.slug}`} className="flex items-center gap-2.5 group">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={it.img} alt={it.name} loading="lazy" className="w-11 h-11 rounded-[9px] object-cover shrink-0 bg-[#f4f5f7]" />
+                <span className="text-[12px] font-semibold text-[#16181d] leading-tight line-clamp-2 group-hover:text-[#2563eb]">{it.name}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
         {items.length === 0
           ? Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="bg-white rounded-[12px] p-[11px]">

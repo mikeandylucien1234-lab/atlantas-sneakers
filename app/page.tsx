@@ -20,8 +20,7 @@ export default function HomePage() {
       <ShopByCategory />
       <DealsRanking />
       <TrendingNow />
-      <BestSellersNewArrivals />
-      <SpecialOffers />
+      <BestSellersNewArrivals middle={<SpecialOffers />} />
       <FlashSales />
       <CollectionBanners />
       <TrustBadges />

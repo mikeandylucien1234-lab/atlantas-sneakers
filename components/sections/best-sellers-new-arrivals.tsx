@@ -7,7 +7,7 @@ import { useQuery } from "@/lib/hooks/use-query";
 import { ProductCard } from "@/components/ui/product-card";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
 
-export function BestSellersNewArrivals() {
+export function BestSellersNewArrivals({ middle }: { middle?: React.ReactNode } = {}) {
   const { data: bestSellers, loading: bsLoading } = useQuery(() => getBestSellers(), []);
   const { data: newArrivals, loading: naLoading } = useQuery(() => getNewArrivals(), []);
   const { data: fallback } = useQuery(() => getProducts({ sort: "featured", limit: 8 }), []);
@@ -50,6 +50,9 @@ export function BestSellersNewArrivals() {
           }
         </div>
       </section>}
+
+      {/* Slot between Best Sellers and New Arrivals */}
+      {middle}
 
       {/* New Arrivals */}
       {showNa && <section>

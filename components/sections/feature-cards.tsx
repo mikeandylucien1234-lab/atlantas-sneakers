@@ -2,31 +2,30 @@ import Link from "next/link";
 import { Zap, Sparkles, Star, Gift } from "lucide-react";
 
 const features = [
-  { icon: Zap, color: "#f97316", title: "Flash Deals", desc: "Limited time offers. Don't miss out!", href: "/deals" },
-  { icon: Sparkles, color: "#2563eb", title: "New Arrivals", desc: "Check out the latest trends", href: "/new-arrivals" },
-  { icon: Star, color: "#7c3aed", title: "Best Sellers", desc: "Shop our most popular items", href: "/best-sellers" },
-  { icon: Gift, color: "#16a34a", title: "Rewards", desc: "Earn points & get exclusive rewards", href: "/account" },
+  { icon: Zap, color: "#f97316", title: "Flash Deals", href: "/deals" },
+  { icon: Sparkles, color: "#2563eb", title: "New Arrivals", href: "/new-arrivals" },
+  { icon: Star, color: "#7c3aed", title: "Best Sellers", href: "/best-sellers" },
+  { icon: Gift, color: "#16a34a", title: "Rewards", href: "/account#rewards" },
 ];
 
 export function FeatureCards() {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-      {features.map(({ icon: Icon, color, title, desc, href }) => (
+    // 4 items on a single horizontal row on every screen — icon above title,
+    // centered, no cards/backgrounds/borders/descriptions.
+    <div className="grid grid-cols-4 gap-2 mt-4">
+      {features.map(({ icon: Icon, color, title, href }) => (
         <Link
           key={title}
           href={href}
-          className="flex items-center gap-[13px] bg-white border border-[#eef0f3] rounded-[14px] py-[15px] px-4 cursor-pointer transition-[transform,box-shadow] duration-[180ms] ease-out hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(16,24,40,.12)]"
+          className="flex flex-col items-center text-center gap-2 py-2 cursor-pointer group"
         >
           <div
-            className="w-[44px] h-[44px] rounded-full flex items-center justify-center shrink-0 text-white shadow-[0_6px_14px_rgba(16,24,40,.14)]"
+            className="w-[46px] h-[46px] rounded-full flex items-center justify-center shrink-0 text-white shadow-[0_6px_14px_rgba(16,24,40,.14)] transition-transform duration-150 group-hover:-translate-y-0.5"
             style={{ background: color }}
           >
             <Icon className="w-[23px] h-[23px]" />
           </div>
-          <div className="min-w-0">
-            <div className="text-[15px] font-bold text-[#16181d]">{title}</div>
-            <div className="text-[12px] text-[#6b7280] leading-[1.35]">{desc}</div>
-          </div>
+          <span className="text-[12px] sm:text-[13px] font-bold text-[#16181d] leading-tight">{title}</span>
         </Link>
       ))}
     </div>

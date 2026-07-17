@@ -26,18 +26,18 @@ export function ShopByCategory() {
           View all <ArrowRight className="w-[15px] h-[15px]" />
         </Link>
       </div>
-      {/* 2 cols mobile · 3 cols tablet · 5 cols desktop */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-6">
+      {/* Mobile: horizontal scroll, 4 visible at a time · tablet 3 cols · desktop 5 cols */}
+      <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 lg:grid-cols-5 sm:gap-x-4 sm:gap-y-6 sm:overflow-visible sm:pb-0">
         {categories.map(({ name, slug, img, tint }) => (
-          <Link key={slug} href={`/category/${slug}`} className="flex flex-col items-center gap-3 group">
+          <Link key={slug} href={`/category/${slug}`} className="flex flex-col items-center gap-2.5 group shrink-0 basis-1/4 snap-start sm:basis-auto sm:shrink">
             <div
-              className="w-[104px] sm:w-[116px] aspect-square rounded-full overflow-hidden ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)]"
+              className="w-[74px] sm:w-[116px] aspect-square rounded-full overflow-hidden ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)]"
               style={{ background: `${tint}18` }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={img} alt={name} loading="lazy" className="w-full h-full object-cover" />
             </div>
-            <span className="text-[14px] font-semibold text-[#16181d] text-center">{name}</span>
+            <span className="text-[12px] sm:text-[14px] font-semibold text-[#16181d] text-center whitespace-nowrap">{name}</span>
           </Link>
         ))}
       </div>

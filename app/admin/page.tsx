@@ -53,6 +53,7 @@ import { AdminSizes } from "@/components/admin/modules/sizes";
 import { AdminWarranties } from "@/components/admin/modules/warranties";
 import { AdminHomepageCategories } from "@/components/admin/modules/homepage-categories";
 import { AdminHomepageNavTabs } from "@/components/admin/modules/homepage-nav-tabs";
+import { AdminMenLanding } from "@/components/admin/modules/men-landing";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -222,6 +223,8 @@ export default function AdminPage() {
         return <AdminHomepageCategories dark={dark} />;
       case "navtabs":
         return <AdminHomepageNavTabs dark={dark} />;
+      case "menlanding":
+        return <AdminMenLanding dark={dark} />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

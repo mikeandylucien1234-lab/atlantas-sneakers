@@ -48,6 +48,7 @@ import {
   Settings,
   ExternalLink,
   Menu,
+  Layout,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -104,6 +105,12 @@ const navGroups: NavGroup[] = [
       { id: "media", label: "Media", icon: MediaIcon },
       { id: "faq", label: "FAQ", icon: HelpCircle },
       { id: "emails", label: "Emails", icon: Mail },
+    ],
+  },
+  {
+    label: "Landing Pages",
+    items: [
+      { id: "menlanding", label: "Men", icon: Layout },
     ],
   },
   {

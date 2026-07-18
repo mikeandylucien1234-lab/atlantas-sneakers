@@ -205,6 +205,98 @@ export async function getNavTabs() {
   return data || [];
 }
 
+// ================= MEN LANDING PAGE (/men) =================
+
+// Resolve the "Men" category id plus all its descendant category ids so we can
+// filter the catalog to men's products. Cached per call.
+export async function getMenCategoryIds(): Promise<string[]> {
+  const supabase = createClient();
+  const { data } = await supabase.from("categories").select("id, slug, parent_id");
+  const cats = data || [];
+  const men = cats.find((c: any) => c.slug === "men");
+  if (!men) return [];
+  const ids = new Set<string>([men.id]);
+  // walk descendants (a couple levels is plenty)
+  let added = true;
+  while (added) {
+    added = false;
+    for (const c of cats) {
+      if (c.parent_id && ids.has(c.parent_id) && !ids.has(c.id)) { ids.add(c.id); added = true; }
+    }
+  }
+  return Array.from(ids);
+}
+
+export async function getMenSettings() {
+  const supabase = createClient();
+  const { data } = await supabase.from("men_page_settings").select("*").eq("id", "men").maybeSingle();
+  return data || null;
+}
+
+export async function getMenCollections() {
+  const supabase = createClient();
+  const { data } = await supabase.from("men_collections").select("*").eq("is_active", true).order("sort_order");
+  return data || [];
+}
+
+export async function getMenShopCategories() {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("men_shop_categories")
+    .select("*, category:categories(slug)")
+    .eq("is_active", true).order("sort_order");
+  return data || [];
+}
+
+export async function getMenBrands() {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("men_brands")
+    .select("*, brand:brands(slug)")
+    .eq("is_active", true).order("sort_order");
+  return data || [];
+}
+
+export async function getMenHeroBanners() {
+  return getBannersByLocation("men_hero");
+}
+
+// Generic men product fetcher. `variant` picks the ordering/flag.
+export async function getMenProducts(opts: { variant?: "new" | "best" | "recommended" | "deals"; limit?: number } = {}) {
+  const supabase = createClient();
+  const ids = await getMenCategoryIds();
+  const limit = opts.limit ?? 8;
+
+  let query = supabase.from("products").select(PRODUCT_SELECT).eq("status", "active");
+  if (ids.length) query = query.in("category_id", ids);
+
+  switch (opts.variant) {
+    case "best": query = query.eq("is_best_seller", true).order("created_at", { ascending: false }); break;
+    case "recommended": query = query.eq("is_trending", true).order("created_at", { ascending: false }); break;
+    case "deals": query = query.not("compare_price", "is", null).order("created_at", { ascending: false }); break;
+    default: query = query.order("created_at", { ascending: false }); // new arrivals
+  }
+  query = query.limit(limit);
+
+  const { data } = await query;
+  if (data && data.length) return data as Product[];
+
+  // Fallback so a section is never empty on a thin catalog: same variant without the Men filter.
+  let fb = supabase.from("products").select(PRODUCT_SELECT).eq("status", "active");
+  if (opts.variant === "deals") fb = fb.not("compare_price", "is", null);
+  const { data: fbData } = await fb.order("created_at", { ascending: false }).limit(limit);
+  return (fbData || []) as Product[];
+}
+
+// Flash-sale products restricted to men's categories (reuses flash_deals).
+export async function getMenFlashDeals() {
+  const all = await getFlashDeals();
+  const ids = new Set(await getMenCategoryIds());
+  if (!ids.size) return all;
+  const men = all.filter((d: any) => d.product && ids.has(d.product.category_id));
+  return men.length ? men : all;
+}
+
 // Active coupons for the storefront "Special Offers" section.
 export async function getActiveCoupons() {
   const supabase = createClient();

@@ -193,6 +193,18 @@ export async function getHomepageCategories() {
   return data || [];
 }
 
+// CMS-managed top navigation tabs (All / Men / Women / …), active + ordered.
+export async function getNavTabs() {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("homepage_nav_tabs")
+    .select("id, label, href, icon, open_new_tab, display_order, linked_category_id, category:categories(slug)")
+    .eq("status", "active")
+    .order("display_order", { ascending: true });
+  if (error) return [];
+  return data || [];
+}
+
 // Active coupons for the storefront "Special Offers" section.
 export async function getActiveCoupons() {
   const supabase = createClient();

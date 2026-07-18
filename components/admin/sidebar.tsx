@@ -47,6 +47,7 @@ import {
   HeartPulse,
   Settings,
   ExternalLink,
+  Menu,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -98,6 +99,7 @@ const navGroups: NavGroup[] = [
       { id: "banners", label: "Banners", icon: ImageIcon },
       { id: "homepage", label: "Homepage", icon: Home },
       { id: "homepagecategories", label: "Shop by Category", icon: Grid3x3 },
+      { id: "navtabs", label: "Category Tabs", icon: Menu },
       { id: "blog", label: "Blog", icon: FileText },
       { id: "media", label: "Media", icon: MediaIcon },
       { id: "faq", label: "FAQ", icon: HelpCircle },

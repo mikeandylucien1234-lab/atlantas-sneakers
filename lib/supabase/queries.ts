@@ -180,6 +180,19 @@ export async function getHeroBanners() {
   return getBannersByLocation("hero_carousel");
 }
 
+// CMS-managed homepage "Shop by Category" tiles (active + shown), ordered.
+export async function getHomepageCategories() {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("homepage_categories")
+    .select("id, name, image_url, alt_text, border_radius, bg_color, open_new_tab, display_order, linked_category_id, category:categories(slug)")
+    .eq("status", "active")
+    .eq("show_on_homepage", true)
+    .order("display_order", { ascending: true });
+  if (error) return [];
+  return data || [];
+}
+
 // Active coupons for the storefront "Special Offers" section.
 export async function getActiveCoupons() {
   const supabase = createClient();

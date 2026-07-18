@@ -97,6 +97,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "banners", label: "Banners", icon: ImageIcon },
       { id: "homepage", label: "Homepage", icon: Home },
+      { id: "homepagecategories", label: "Shop by Category", icon: Grid3x3 },
       { id: "blog", label: "Blog", icon: FileText },
       { id: "media", label: "Media", icon: MediaIcon },
       { id: "faq", label: "FAQ", icon: HelpCircle },

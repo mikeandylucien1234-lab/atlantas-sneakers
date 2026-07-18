@@ -1,23 +1,39 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { getHomepageCategories } from "@/lib/supabase/queries";
+import { useQuery } from "@/lib/hooks/use-query";
 
-// Categories that are NOT already in the navbar. Each has its own relevant photo.
-const IMG = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=240&h=240&q=80`;
-
-const categories = [
-  { name: "Hoodies", slug: "hoodies", img: IMG("1556821840-3a63f95609a7"), tint: "#7c3aed" },
-  { name: "Jackets", slug: "jackets", img: IMG("1551028719-00167b16eac5"), tint: "#2563eb" },
-  { name: "Tops", slug: "tops", img: IMG("1521572163474-6864f9cf17ab"), tint: "#ec4899" },
-  { name: "Bottoms", slug: "bottoms", img: IMG("1541099649105-f69ad21f3246"), tint: "#0ea5e9" },
-  { name: "Accessories", slug: "accessories", img: IMG("1611591437281-460bfbe1220a"), tint: "#f59e0b" },
-  { name: "Electronics", slug: "electronics", img: IMG("1498049794561-7780e7231661"), tint: "#16a34a" },
-  { name: "Headphones", slug: "headphones", img: IMG("1505740420928-5e560c06d30e"), tint: "#ef4444" },
-  { name: "Watches", slug: "watches", img: IMG("1523275335684-37898b6baf30"), tint: "#0d9488" },
-  { name: "Bags", slug: "bags", img: IMG("1553062407-98eeb64c6a62"), tint: "#d946ef" },
-  { name: "Sunglasses", slug: "sunglasses", img: IMG("1572635196237-14b3f281503f"), tint: "#eab308" },
+// Fallback tiles used only when the CMS table is empty.
+const FIMG = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=240&h=240&q=80`;
+const fallback = [
+  { id: "f1", name: "Hoodies", image_url: FIMG("1556821840-3a63f95609a7"), href: "/category/hoodies", radius: "circle", bg_color: "#7c3aed18", alt: "Hoodies", newTab: false },
+  { id: "f2", name: "Tops", image_url: FIMG("1521572163474-6864f9cf17ab"), href: "/category/tops", radius: "circle", bg_color: "#ec489918", alt: "Tops", newTab: false },
+  { id: "f3", name: "Accessories", image_url: FIMG("1611591437281-460bfbe1220a"), href: "/category/accessories", radius: "circle", bg_color: "#f59e0b18", alt: "Accessories", newTab: false },
+  { id: "f4", name: "Headphones", image_url: FIMG("1505740420928-5e560c06d30e"), href: "/category/headphones", radius: "circle", bg_color: "#ef444418", alt: "Headphones", newTab: false },
 ];
 
+const radiusCls = (r: string) => (r === "square" ? "rounded-[14px]" : r === "rounded" ? "rounded-[24px]" : "rounded-full");
+
 export function ShopByCategory() {
+  const { data } = useQuery(() => getHomepageCategories(), []);
+
+  const tiles = (data && data.length)
+    ? data.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        image_url: c.image_url,
+        alt: c.alt_text || c.name,
+        radius: c.border_radius || "circle",
+        bg_color: c.bg_color || "#eef0f3",
+        newTab: !!c.open_new_tab,
+        href: c.category?.slug ? `/category/${c.category.slug}` : "/categories",
+      }))
+    : fallback;
+
+  if (!tiles.length) return null;
+
   return (
     <div className="mt-9">
       <div className="flex items-center justify-between gap-3 mb-[18px]">
@@ -26,19 +42,26 @@ export function ShopByCategory() {
           View all <ArrowRight className="w-[15px] h-[15px]" />
         </Link>
       </div>
-      {/* Mobile: 2 rows of 4 (top + bottom), horizontal scroll for more.
-          Tablet 3 cols · desktop 5 cols. */}
-      <div className="grid grid-rows-2 grid-flow-col auto-cols-[24%] gap-x-2 gap-y-5 overflow-x-auto pb-2 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid-rows-none sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-3 lg:grid-cols-5 sm:gap-x-4 sm:gap-y-6 sm:overflow-visible sm:pb-0">
-        {categories.map(({ name, slug, img, tint }) => (
-          <Link key={slug} href={`/category/${slug}`} className="flex flex-col items-center gap-2 group snap-start">
+      {/* Mobile: 2 rows of 4, horizontal scroll · tablet 4 cols · desktop 8 cols */}
+      <div className="grid grid-rows-2 grid-flow-col auto-cols-[24%] gap-x-2 gap-y-5 overflow-x-auto pb-2 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid-rows-none sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-4 lg:grid-cols-8 sm:gap-x-4 sm:gap-y-6 sm:overflow-visible sm:pb-0">
+        {tiles.map((t) => (
+          <Link
+            key={t.id}
+            href={t.href}
+            target={t.newTab ? "_blank" : undefined}
+            rel={t.newTab ? "noopener noreferrer" : undefined}
+            className="flex flex-col items-center gap-2 group snap-start"
+          >
             <div
-              className="w-[70px] sm:w-[116px] aspect-square rounded-full overflow-hidden ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)]"
-              style={{ background: `${tint}18` }}
+              className={`w-[70px] sm:w-[104px] aspect-square overflow-hidden ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)] ${radiusCls(t.radius)}`}
+              style={{ background: t.bg_color }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img} alt={name} loading="lazy" className="w-full h-full object-cover" />
+              {t.image_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.image_url} alt={t.alt} loading="lazy" className="w-full h-full object-cover" />
+              )}
             </div>
-            <span className="text-[12px] sm:text-[14px] font-semibold text-[#16181d] text-center whitespace-nowrap">{name}</span>
+            <span className="text-[12px] sm:text-[14px] font-semibold text-[#16181d] text-center whitespace-nowrap">{t.name}</span>
           </Link>
         ))}
       </div>

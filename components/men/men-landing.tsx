@@ -103,13 +103,13 @@ function MenShopCategory() {
       <SectionHead title="SHOP BY CATEGORY" />
       <div className="grid grid-rows-2 grid-flow-col auto-cols-[24%] gap-x-2 gap-y-5 overflow-x-auto pb-2 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid-rows-none sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-5 lg:grid-cols-10 sm:gap-x-4 sm:gap-y-6 sm:overflow-visible">
         {items.map((t) => (
-          <Link key={t.id} href={t.href} className="flex flex-col items-center gap-2 group snap-start">
+          <Link key={t.id} href={t.href} className="flex flex-col items-center gap-2 group snap-start w-[70px] sm:w-[92px] shrink-0">
             <div className="w-[70px] sm:w-[92px] aspect-square rounded-full overflow-hidden ring-1 ring-black/[.04] bg-[#f4f5f7] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)]">
               {t.image_url && /* eslint-disable-next-line @next/next/no-img-element */ (
                 <img src={t.image_url} alt={t.name} loading="lazy" className="w-full h-full object-cover" />
               )}
             </div>
-            <span className="text-[12px] sm:text-[13px] font-semibold text-[#16181d] text-center whitespace-nowrap">{t.name}</span>
+            <span className="w-full text-[11px] sm:text-[12px] leading-tight font-semibold text-[#16181d] text-center line-clamp-2 break-words">{t.name}</span>
           </Link>
         ))}
       </div>

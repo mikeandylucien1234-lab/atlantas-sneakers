@@ -21,6 +21,8 @@ const SECTION_LABELS = {
   hot_sellers: "Hot Sellers", seasonal: "Seasonal Collections", newsletter: "Newsletter",
   age_nav: "Age Navigation", weekly_special: "Weekly Special", budget_buys: "Budget Buys",
   high_cotton: "High Cotton", family_matching: "Family Matching", kids_essentials: "Kids Essentials",
+  guarantee: "Guarantee Bar", quick_filters: "Quick Filters", hot_sales: "Hot Sales",
+  local_stock: "Local Stock", ship_today: "Shipped Today", why_quickship: "Why QuickShip",
 };
 const VIS_MAP = {
   hero: "show_hero", collections: "show_collections", shop_category: "show_shop_category",
@@ -30,6 +32,8 @@ const VIS_MAP = {
   hot_sellers: "show_hot_sellers", seasonal: "show_seasonal", newsletter: "show_newsletter",
   age_nav: "show_age_nav", weekly_special: "show_weekly_special", budget_buys: "show_budget_buys",
   high_cotton: "show_high_cotton", family_matching: "show_family_matching", kids_essentials: "show_kids_essentials",
+  guarantee: "show_guarantee", quick_filters: "show_quick_filters", hot_sales: "show_hot_sales",
+  local_stock: "show_local_stock", ship_today: "show_ship_today", why_quickship: "show_why",
 };
 
 export function AdminMenLanding({ dark, page = "men" }: Props) {
@@ -357,6 +361,9 @@ function SettingsPanel({ styles, authed, sb, showToast, page }) {
         show_hot_sellers: s.show_hot_sellers !== false, show_seasonal: s.show_seasonal !== false, show_newsletter: s.show_newsletter !== false,
         show_age_nav: s.show_age_nav !== false, show_weekly_special: s.show_weekly_special !== false, show_budget_buys: s.show_budget_buys !== false,
         show_high_cotton: s.show_high_cotton !== false, show_family_matching: s.show_family_matching !== false, show_kids_essentials: s.show_kids_essentials !== false,
+        show_guarantee: s.show_guarantee !== false, show_quick_filters: s.show_quick_filters !== false, show_hot_sales: s.show_hot_sales !== false,
+        show_local_stock: s.show_local_stock !== false, show_ship_today: s.show_ship_today !== false, show_why: s.show_why !== false,
+        hot_sales_count: Number(s.hot_sales_count) || 8,
         weekly_special_count: Number(s.weekly_special_count) || 4, budget_buys_count: Number(s.budget_buys_count) || 4,
         high_cotton_count: Number(s.high_cotton_count) || 4, family_matching_count: Number(s.family_matching_count) || 4,
         new_arrivals_count: Number(s.new_arrivals_count) || 8, best_sellers_count: Number(s.best_sellers_count) || 8,

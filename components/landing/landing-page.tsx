@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight, Zap, Clock } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Zap, Clock, Truck, ShieldCheck, RotateCcw, MapPin, Package, Lock, Heart, BadgeCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useRecentlyViewed } from "@/lib/hooks/use-recently-viewed";
+import { useWishlistStore } from "@/lib/store/wishlist-store";
 import { ProductCard } from "@/components/ui/product-card";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
 import { NewsletterSection } from "@/components/sections/newsletter-section";
@@ -312,6 +313,126 @@ function RecentlyViewed() {
   );
 }
 
+/* ================= QUICKSHIP ================= */
+
+// Premium QuickShip product card: express badge, discount, delivery + stock.
+function QuickShipCard({ p }: { p: any }) {
+  const toggle = useWishlistStore((s) => s.toggleItem);
+  const wished = useWishlistStore((s) => s.isInWishlist(p.id));
+  const price = Number(p.price);
+  const old = p.compare_price ? Number(p.compare_price) : undefined;
+  const disc = old ? Math.round(((old - price) / old) * 100) : 0;
+  const hrs = p.delivery_hours || 72;
+  const stock = p.local_stock;
+  const low = stock != null && stock <= 5;
+  return (
+    <div className="group relative bg-white rounded-[14px] border border-[#eef0f3] overflow-hidden transition-[transform,box-shadow] duration-[160ms] hover:-translate-y-[3px] hover:shadow-[0_12px_26px_rgba(16,24,40,.12)]">
+      <Link href={`/product/${p.slug}`} className="block">
+        <div className="relative aspect-square bg-[#f4f5f7] overflow-hidden">
+          {p.images?.[0] && /* eslint-disable-next-line @next/next/no-img-element */ <img src={p.images[0]} alt={p.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-[160ms] group-hover:scale-105" />}
+          <div className="absolute top-2 left-2 flex flex-col gap-1.5 items-start">
+            <span className="inline-flex items-center gap-1 bg-[#2563eb] text-white text-[10px] font-extrabold py-[3px] px-[7px] rounded-[6px] shadow"><Zap className="w-3 h-3" fill="#fff" /> EXPRESS</span>
+            {disc > 0 && <span className="bg-[#ef4444] text-white text-[10px] font-extrabold py-[3px] px-[7px] rounded-[6px]">-{disc}%</span>}
+            {p.is_new && <span className="bg-[#16181d] text-white text-[10px] font-extrabold py-[3px] px-[7px] rounded-[6px]">NEW</span>}
+          </div>
+        </div>
+      </Link>
+      <button onClick={() => toggle({ id: p.id, productId: p.id, name: p.name, image: p.images?.[0], price })} className="absolute top-2 right-2 h-[30px] w-[30px] flex items-center justify-center rounded-full bg-white/[.92] shadow hover:bg-white transition">
+        <Heart className={cn("h-[15px] w-[15px]", wished ? "fill-[#ef4444] text-[#ef4444]" : "text-[#9aa3ad]")} />
+      </button>
+      <div className="px-[13px] pt-[11px] pb-[13px]">
+        <Link href={`/product/${p.slug}`}><h3 className="text-[13px] font-bold text-[#16181d] line-clamp-2 leading-snug hover:text-[#2563eb]">{p.name}</h3></Link>
+        <div className="flex items-baseline gap-1.5 mt-1.5">
+          <span className="text-[15px] font-extrabold text-[#16181d]">${price.toFixed(2)}</span>
+          {old && <span className="text-[12px] text-[#9aa3ad] line-through">${old.toFixed(2)}</span>}
+        </div>
+        <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-[#059669]"><Truck className="w-3.5 h-3.5" /> Livraison {hrs}h</div>
+        {stock != null && (
+          <div className={cn("mt-1 flex items-center gap-1.5 text-[11px] font-semibold", low ? "text-[#ef4444]" : "text-[#4b5563]")}>
+            <Package className="w-3.5 h-3.5" /> {low ? `Plus que ${stock} !` : "En stock local"}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QuickShipGrid({ title, href, variant, limit, maxHours }: { title: string; href?: string; variant?: LandingProductVariant; limit: number; maxHours?: number }) {
+  const { data, loading } = useQuery(() => getLandingProducts("quickship", { variant, limit, maxHours }), [variant, limit, maxHours]);
+  const items = data || [];
+  if (!loading && !items.length) return null;
+  return (
+    <div>
+      <SectionHead title={title} href={href} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        {loading ? Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={i} />) : items.map((p: any) => <QuickShipCard key={p.id} p={p} />)}
+      </div>
+    </div>
+  );
+}
+
+function GuaranteeBar() {
+  const items = [
+    { icon: Truck, label: "Livraison Express" },
+    { icon: MapPin, label: "Entrepôt Local" },
+    { icon: Zap, label: "Expédition 24h" },
+    { icon: Lock, label: "Paiement sécurisé" },
+    { icon: RotateCcw, label: "Retour facile" },
+  ];
+  return (
+    <div className="rounded-[16px] border border-[#eef0f3] bg-white px-3 py-3 sm:px-5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex items-center gap-5 sm:gap-8 min-w-max sm:min-w-0 sm:justify-between">
+        {items.map((it) => { const I = it.icon; return (
+          <div key={it.label} className="flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 rounded-full bg-[#2563eb]/10 flex items-center justify-center"><I className="w-[17px] h-[17px] text-[#2563eb]" /></div>
+            <span className="text-[12px] font-bold text-[#16181d] whitespace-nowrap">{it.label}</span>
+          </div>
+        ); })}
+      </div>
+    </div>
+  );
+}
+
+const QUICK_FILTERS = [
+  { key: 0, label: "Disponible maintenant" },
+  { key: 24, label: "Livraison 24h" },
+  { key: 48, label: "Livraison 48h" },
+  { key: 72, label: "Livraison 72h" },
+];
+function QuickFilters({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {QUICK_FILTERS.map((f) => (
+        <button key={f.key} onClick={() => onChange(f.key)} className={cn("shrink-0 h-9 px-4 rounded-full text-[13px] font-bold border transition-colors", value === f.key ? "bg-[#2563eb] text-white border-[#2563eb]" : "bg-white text-[#4b5563] border-[#eef0f3] hover:border-[#2563eb]")}>{f.label}</button>
+      ))}
+    </div>
+  );
+}
+
+function WhyQuickShip() {
+  const items = [
+    { icon: Zap, t: "Livraison rapide", d: "Reçu en 24-72h" },
+    { icon: BadgeCheck, t: "Aucun délai fournisseur", d: "Déjà en entrepôt local" },
+    { icon: RotateCcw, t: "Retour facile", d: "Sous 30 jours" },
+    { icon: Lock, t: "Paiement sécurisé", d: "Transactions protégées" },
+    { icon: ShieldCheck, t: "Produits vérifiés", d: "Qualité contrôlée" },
+  ];
+  return (
+    <div className="rounded-[18px] bg-[linear-gradient(120deg,#0f172a,#1e293b)] text-white p-5 sm:p-7">
+      <h2 className="text-[19px] sm:text-[22px] font-extrabold tracking-[-.01em] mb-4">POURQUOI QUICKSHIP ?</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {items.map((it) => { const I = it.icon; return (
+          <div key={it.t} className="bg-white/[.06] rounded-[14px] p-3.5">
+            <div className="w-9 h-9 rounded-full bg-[#2563eb] flex items-center justify-center mb-2"><I className="w-[18px] h-[18px] text-white" /></div>
+            <div className="text-[13px] font-extrabold">{it.t}</div>
+            <div className="text-[11px] text-white/70 mt-0.5">{it.d}</div>
+          </div>
+        ); })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Kids Essentials (tiles from style looks) ---------------- */
 function KidsEssentials({ page }: { page: string }) {
   const { data } = useQuery(() => getLandingStyleLooks(page, "essentials"), [page]);
@@ -342,6 +463,10 @@ export function LandingPage({ page }: { page: string }) {
   // Kids age-range filter (null = all ages). `ageCat` scopes product sections.
   const [age, setAge] = useState<{ catId: string | null; id: string | null }>({ catId: null, id: null });
   const ageCat = age.catId;
+  const isQuick = page === "quickship";
+  // QuickShip delivery filter (0 = all / available now). Applies to product grids.
+  const [maxHours, setMaxHours] = useState(0);
+  const qh = maxHours || undefined;
 
   const naCount = s.new_arrivals_count ?? 8;
   const bsCount = s.best_sellers_count ?? 8;
@@ -368,6 +493,8 @@ export function LandingPage({ page }: { page: string }) {
       hot_sellers: s.show_hot_sellers, seasonal: s.show_seasonal, newsletter: s.show_newsletter,
       age_nav: s.show_age_nav, weekly_special: s.show_weekly_special, budget_buys: s.show_budget_buys,
       high_cotton: s.show_high_cotton, family_matching: s.show_family_matching, kids_essentials: s.show_kids_essentials,
+      guarantee: s.show_guarantee, quick_filters: s.show_quick_filters, hot_sales: s.show_hot_sales,
+      local_stock: s.show_local_stock, ship_today: s.show_ship_today, why_quickship: s.show_why,
     };
     return map[key] !== false;
   };
@@ -376,18 +503,30 @@ export function LandingPage({ page }: { page: string }) {
     switch (key) {
       case "hero": return <Hero page={page} />;
       case "age_nav": return <AgeNav page={page} ageId={age.id} onSelect={(catId, id) => setAge({ catId, id })} />;
+      case "guarantee": return <GuaranteeBar />;
+      case "quick_filters": return <QuickFilters value={maxHours} onChange={setMaxHours} />;
+      case "hot_sales": return <QuickShipGrid title="HOT SALES" href="/shop" variant="deals" limit={s.hot_sales_count ?? 8} maxHours={qh} />;
+      case "local_stock": return <QuickShipGrid title="DISPONIBLE DANS VOTRE RÉGION" variant="best" limit={8} maxHours={qh} />;
+      case "ship_today": return <QuickShipGrid title="EXPÉDIÉ AUJOURD'HUI" variant="new" limit={8} maxHours={24} />;
+      case "why_quickship": return <WhyQuickShip />;
       case "collections": return <Collections page={page} />;
       case "shop_category": return <ShopCategory page={page} />;
-      case "new_arrivals": return <ProductGrid page={page} title="NEW ARRIVALS" href="/new-arrivals" variant="new" limit={naCount} ageCategoryId={ageCat} />;
+      case "new_arrivals": return isQuick
+        ? <QuickShipGrid title="NEW ARRIVALS" variant="new" limit={naCount} maxHours={qh} />
+        : <ProductGrid page={page} title="NEW ARRIVALS" href="/new-arrivals" variant="new" limit={naCount} ageCategoryId={ageCat} />;
       case "flash_sale": return <FlashSale page={page} accent={accent} />;
       case "super_deals": return <SuperDeals page={page} limit={sdCount} ageCategoryId={ageCat} />;
       case "weekly_special": return <ProductGrid page={page} title="WEEKLY SPECIAL" href="/deals" variant="deals" limit={wsCount} ageCategoryId={ageCat} />;
       case "budget_buys": return <ProductGrid page={page} title="BUDGET BUYS" variant="budget" limit={bbCount} ageCategoryId={ageCat} />;
       case "high_cotton": return <ProductGrid page={page} title="HIGH COTTON" variant="best" limit={hcCount} ageCategoryId={ageCat} />;
       case "family_matching": return <ProductGrid page={page} title="FAMILY MATCHING" variant="trending" limit={fmCount} ageCategoryId={ageCat} />;
-      case "best_sellers": return <ProductGrid page={page} title="BEST SELLERS" href="/best-sellers" variant="best" limit={bsCount} ageCategoryId={ageCat} />;
+      case "best_sellers": return isQuick
+        ? <QuickShipGrid title="BEST SELLERS" variant="best" limit={bsCount} maxHours={qh} />
+        : <ProductGrid page={page} title="BEST SELLERS" href="/best-sellers" variant="best" limit={bsCount} ageCategoryId={ageCat} />;
       case "trending": return <ProductGrid page={page} title="TRENDING NOW" variant="trending" limit={trCount} ageCategoryId={ageCat} />;
-      case "recommended": return <ProductGrid page={page} title="RECOMMENDED FOR YOU" variant="recommended" limit={recCount} ageCategoryId={ageCat} />;
+      case "recommended": return isQuick
+        ? <QuickShipGrid title="FOR YOU" variant="recommended" limit={recCount} maxHours={qh} />
+        : <ProductGrid page={page} title="RECOMMENDED FOR YOU" variant="recommended" limit={recCount} ageCategoryId={ageCat} />;
       case "brands": return <Brands page={page} />;
       case "style_inspiration": return <StyleInspiration page={page} />;
       case "seasonal": return <StyleInspiration page={page} title="SEASONAL COLLECTIONS" section={page === "kids" ? "seasonal" : "style"} />;

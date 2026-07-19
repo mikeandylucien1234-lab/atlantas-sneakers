@@ -292,9 +292,13 @@ export async function getLandingHeroBanners(page: string) {
 
 // Page-scoped product fetcher. `variant` picks the ordering/flag.
 // `ageCategoryId` (Kids) restricts to that category subtree instead of the page tree.
-export async function getLandingProducts(page: string, opts: { variant?: LandingProductVariant; limit?: number; ageCategoryId?: string } = {}) {
+// For page==='quickship', products are filtered by the QuickShip business rules
+// (is_quickship + local stock > 0) and optional delivery window `maxHours`.
+export async function getLandingProducts(page: string, opts: { variant?: LandingProductVariant; limit?: number; ageCategoryId?: string; maxHours?: number } = {}) {
   const supabase = createClient();
-  const ids = opts.ageCategoryId ? await getCategorySubtreeIds(opts.ageCategoryId) : await getLandingCategoryIds(page);
+  const isQuick = page === "quickship";
+  const ids = (isQuick || opts.ageCategoryId == null) ? [] : await getCategorySubtreeIds(opts.ageCategoryId);
+  const pageIds = isQuick ? [] : (ids.length ? ids : await getLandingCategoryIds(page));
   const limit = opts.limit ?? 8;
 
   const applyVariant = (q: any) => {
@@ -307,12 +311,27 @@ export async function getLandingProducts(page: string, opts: { variant?: Landing
       default: return q.order("created_at", { ascending: false }); // new arrivals
     }
   };
+  const base = () => {
+    let q = supabase.from("products").select(PRODUCT_SELECT).eq("status", "active");
+    if (isQuick) {
+      q = q.eq("is_quickship", true).gt("local_stock", 0);
+      if (opts.maxHours) q = q.lte("delivery_hours", opts.maxHours);
+    } else if (pageIds.length) {
+      q = q.in("category_id", pageIds);
+    }
+    return q;
+  };
 
-  let query = supabase.from("products").select(PRODUCT_SELECT).eq("status", "active");
-  if (ids.length) query = query.in("category_id", ids);
-  query = applyVariant(query).limit(limit);
-  const { data } = await query;
+  const { data } = await applyVariant(base()).limit(limit);
   if (data && data.length) return data as Product[];
+
+  // QuickShip must NEVER show non-quickship products — no cross-category fallback.
+  if (isQuick) {
+    const { data: qsAny } = await supabase.from("products").select(PRODUCT_SELECT)
+      .eq("status", "active").eq("is_quickship", true).gt("local_stock", 0)
+      .order("created_at", { ascending: false }).limit(limit);
+    return (qsAny || []) as Product[];
+  }
 
   // Fallback so a section is never empty: same variant without the category filter…
   let fb = supabase.from("products").select(PRODUCT_SELECT).eq("status", "active");
@@ -320,7 +339,6 @@ export async function getLandingProducts(page: string, opts: { variant?: Landing
   const { data: fbData } = await fb;
   if (fbData && fbData.length) return fbData as Product[];
 
-  // …last resort: newest active products (keeps trending/best/recommended visible).
   const { data: any } = await supabase.from("products").select(PRODUCT_SELECT)
     .eq("status", "active").order("created_at", { ascending: false }).limit(limit);
   return (any || []) as Product[];

@@ -18,12 +18,14 @@ const SECTION_LABELS = {
   new_arrivals: "New Arrivals", flash_sale: "Flash Sale", super_deals: "Super Deals",
   best_sellers: "Best Sellers", trending: "Trending Now", recommended: "Recommended",
   brands: "Featured Brands", style_inspiration: "Style Inspiration", recently_viewed: "Recently Viewed",
+  hot_sellers: "Hot Sellers", seasonal: "Seasonal Collections", newsletter: "Newsletter",
 };
 const VIS_MAP = {
   hero: "show_hero", collections: "show_collections", shop_category: "show_shop_category",
   new_arrivals: "show_new_arrivals", flash_sale: "show_flash_sale", super_deals: "show_super_deals",
   best_sellers: "show_best_sellers", trending: "show_trending", recommended: "show_recommended",
   brands: "show_brands", style_inspiration: "show_style_inspiration", recently_viewed: "show_recently_viewed",
+  hot_sellers: "show_hot_sellers", seasonal: "show_seasonal", newsletter: "show_newsletter",
 };
 
 export function AdminMenLanding({ dark, page = "men" }: Props) {
@@ -78,7 +80,7 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className={cn("text-[20px] font-extrabold tracking-[-.02em] flex items-center gap-2", txt)}><Layout className="w-5 h-5 text-[#2563eb]" /> {page === "women" ? "Women" : "Men"} Landing Page <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", inpBg)}>/{page}</span></h1>
+        <h1 className={cn("text-[20px] font-extrabold tracking-[-.02em] flex items-center gap-2", txt)}><Layout className="w-5 h-5 text-[#2563eb]" /> {page.charAt(0).toUpperCase() + page.slice(1)} Landing Page <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full", inpBg)}>/{page}</span></h1>
         <p className={cn("text-xs mt-0.5", sub)}>Manage everything on the {page} landing page — no code changes needed. New Arrivals, Flash Sale, Super Deals, Best Sellers, Trending & Recommended pull {page}'s products automatically.</p>
       </div>
 
@@ -339,8 +341,10 @@ function SettingsPanel({ styles, authed, sb, showToast, page }) {
         show_new_arrivals: s.show_new_arrivals !== false, show_flash_sale: s.show_flash_sale !== false, show_super_deals: s.show_super_deals !== false,
         show_best_sellers: s.show_best_sellers !== false, show_trending: s.show_trending !== false, show_recommended: s.show_recommended !== false,
         show_brands: s.show_brands !== false, show_style_inspiration: s.show_style_inspiration !== false, show_recently_viewed: s.show_recently_viewed !== false,
+        show_hot_sellers: s.show_hot_sellers !== false, show_seasonal: s.show_seasonal !== false, show_newsletter: s.show_newsletter !== false,
         new_arrivals_count: Number(s.new_arrivals_count) || 8, best_sellers_count: Number(s.best_sellers_count) || 8,
         recommended_count: Number(s.recommended_count) || 8, super_deals_count: Number(s.super_deals_count) || 8, trending_count: Number(s.trending_count) || 8,
+        hot_sellers_count: Number(s.hot_sellers_count) || 4,
         best_sellers_window: s.best_sellers_window || "all", flash_accent: s.flash_accent || null,
         section_order: order,
         seo_title: s.seo_title || null, seo_description: s.seo_description || null, seo_slug: s.seo_slug || page,

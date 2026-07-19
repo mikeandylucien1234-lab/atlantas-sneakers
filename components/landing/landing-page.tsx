@@ -8,6 +8,7 @@ import { useQuery } from "@/lib/hooks/use-query";
 import { useRecentlyViewed } from "@/lib/hooks/use-recently-viewed";
 import { ProductCard } from "@/components/ui/product-card";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
+import { NewsletterSection } from "@/components/sections/newsletter-section";
 import {
   getLandingSettings, getLandingHeroBanners, getLandingCollections, getLandingShopCategories,
   getLandingBrands, getLandingStyleLooks, getLandingProducts, getLandingFlashDeals, getProductsByIds,
@@ -250,13 +251,13 @@ function Brands({ page }: { page: string }) {
 }
 
 /* ---------------- Style Inspiration ---------------- */
-function StyleInspiration({ page }: { page: string }) {
+function StyleInspiration({ page, title = "STYLE INSPIRATION" }: { page: string; title?: string }) {
   const { data } = useQuery(() => getLandingStyleLooks(page), [page]);
   const items = data || [];
   if (!items.length) return null;
   return (
     <div>
-      <SectionHead title="STYLE INSPIRATION" />
+      <SectionHead title={title} />
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {items.map((l: any, idx: number) => (
           <Link key={l.id} href={l.link_url || `/category/${page}`} className={cn("relative rounded-[16px] overflow-hidden group aspect-[4/5]", idx === 0 && "col-span-2 lg:col-span-1")}>
@@ -306,6 +307,7 @@ export function LandingPage({ page }: { page: string }) {
   const recCount = s.recommended_count ?? 8;
   const sdCount = s.super_deals_count ?? 8;
   const trCount = s.trending_count ?? 8;
+  const hsCount = s.hot_sellers_count ?? 4;
   const accent = s.flash_accent || "#2563eb";
 
   const defaultOrder = ["hero", "collections", "shop_category", "new_arrivals", "flash_sale", "super_deals", "best_sellers", "brands", "recommended"];
@@ -318,6 +320,7 @@ export function LandingPage({ page }: { page: string }) {
       new_arrivals: s.show_new_arrivals, flash_sale: s.show_flash_sale, super_deals: s.show_super_deals,
       best_sellers: s.show_best_sellers, trending: s.show_trending, recommended: s.show_recommended,
       brands: s.show_brands, style_inspiration: s.show_style_inspiration, recently_viewed: s.show_recently_viewed,
+      hot_sellers: s.show_hot_sellers, seasonal: s.show_seasonal, newsletter: s.show_newsletter,
     };
     return map[key] !== false;
   };
@@ -335,7 +338,10 @@ export function LandingPage({ page }: { page: string }) {
       case "recommended": return <ProductGrid page={page} title="RECOMMENDED FOR YOU" variant="recommended" limit={recCount} />;
       case "brands": return <Brands page={page} />;
       case "style_inspiration": return <StyleInspiration page={page} />;
+      case "seasonal": return <StyleInspiration page={page} title="SEASONAL COLLECTIONS" />;
+      case "hot_sellers": return <ProductGrid page={page} title="HOT SELLERS" variant="best" limit={hsCount} />;
       case "recently_viewed": return <RecentlyViewed />;
+      case "newsletter": return <NewsletterSection />;
       default: return null;
     }
   };

@@ -112,6 +112,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "menlanding", label: "Men", icon: Layout },
       { id: "womenlanding", label: "Women", icon: Layout },
+      { id: "curvelanding", label: "Curve", icon: Layout },
     ],
   },
   {

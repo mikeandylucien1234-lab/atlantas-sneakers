@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronLeft, ChevronRight, Zap, Clock, Truck, ShieldCheck, RotateCcw, MapPin, Package, Lock, Heart, BadgeCheck } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Zap, Clock, Truck, ShieldCheck, RotateCcw, MapPin, Package, Lock, Heart, BadgeCheck, Gift, Ticket, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@/lib/hooks/use-query";
 import { useRecentlyViewed } from "@/lib/hooks/use-recently-viewed";
@@ -455,6 +455,33 @@ function KidsEssentials({ page }: { page: string }) {
   );
 }
 
+/* ---------------- Loyalty (static) ---------------- */
+function Loyalty() {
+  const perks = [
+    { icon: BadgeCheck, t: "Points fidélité", d: "Gagnez à chaque achat" },
+    { icon: Gift, t: "Récompenses", d: "Échangez vos points" },
+    { icon: Ticket, t: "Coupons exclusifs", d: "Offres réservées aux membres" },
+    { icon: Wallet, t: "Cashback", d: "Remboursement sur vos achats" },
+  ];
+  return (
+    <div className="rounded-[18px] bg-[linear-gradient(120deg,#1d4ed8,#2563eb)] text-white p-5 sm:p-7">
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <h2 className="text-[19px] sm:text-[22px] font-extrabold tracking-[-.01em]">PROGRAMME FIDÉLITÉ</h2>
+        <Link href="/account#rewards" className="bg-white text-[#1d4ed8] font-bold text-[13px] py-2.5 px-5 rounded-full hover:brightness-105 active:scale-[.97] transition">Rejoindre</Link>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {perks.map((p) => { const I = p.icon; return (
+          <div key={p.t} className="bg-white/[.08] rounded-[14px] p-3.5">
+            <div className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center mb-2"><I className="w-[18px] h-[18px] text-white" /></div>
+            <div className="text-[13px] font-extrabold">{p.t}</div>
+            <div className="text-[11px] text-white/75 mt-0.5">{p.d}</div>
+          </div>
+        ); })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Orchestrator ---------------- */
 export function LandingPage({ page }: { page: string }) {
   const { data: settings } = useQuery(() => getLandingSettings(page), [page]);
@@ -495,6 +522,7 @@ export function LandingPage({ page }: { page: string }) {
       high_cotton: s.show_high_cotton, family_matching: s.show_family_matching, kids_essentials: s.show_kids_essentials,
       guarantee: s.show_guarantee, quick_filters: s.show_quick_filters, hot_sales: s.show_hot_sales,
       local_stock: s.show_local_stock, ship_today: s.show_ship_today, why_quickship: s.show_why,
+      bundles: s.show_bundles, loyalty: s.show_loyalty,
     };
     return map[key] !== false;
   };
@@ -530,6 +558,8 @@ export function LandingPage({ page }: { page: string }) {
       case "brands": return <Brands page={page} />;
       case "style_inspiration": return <StyleInspiration page={page} />;
       case "seasonal": return <StyleInspiration page={page} title="SEASONAL COLLECTIONS" section={page === "kids" ? "seasonal" : "style"} />;
+      case "bundles": return <StyleInspiration page={page} title="ACHETEZ ENSEMBLE" section="bundle" />;
+      case "loyalty": return <Loyalty />;
       case "kids_essentials": return <KidsEssentials page={page} />;
       case "hot_sellers": return <ProductGrid page={page} title="HOT SELLERS" variant="best" limit={hsCount} ageCategoryId={ageCat} />;
       case "recently_viewed": return <RecentlyViewed />;

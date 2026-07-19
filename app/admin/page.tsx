@@ -233,6 +233,8 @@ export default function AdminPage() {
         return <AdminMenLanding dark={dark} page="kids" />;
       case "quickshiplanding":
         return <AdminMenLanding dark={dark} page="quickship" />;
+      case "beautylanding":
+        return <AdminMenLanding dark={dark} page="beauty" />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

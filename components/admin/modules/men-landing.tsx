@@ -19,6 +19,8 @@ const SECTION_LABELS = {
   best_sellers: "Best Sellers", trending: "Trending Now", recommended: "Recommended",
   brands: "Featured Brands", style_inspiration: "Style Inspiration", recently_viewed: "Recently Viewed",
   hot_sellers: "Hot Sellers", seasonal: "Seasonal Collections", newsletter: "Newsletter",
+  age_nav: "Age Navigation", weekly_special: "Weekly Special", budget_buys: "Budget Buys",
+  high_cotton: "High Cotton", family_matching: "Family Matching", kids_essentials: "Kids Essentials",
 };
 const VIS_MAP = {
   hero: "show_hero", collections: "show_collections", shop_category: "show_shop_category",
@@ -26,6 +28,8 @@ const VIS_MAP = {
   best_sellers: "show_best_sellers", trending: "show_trending", recommended: "show_recommended",
   brands: "show_brands", style_inspiration: "show_style_inspiration", recently_viewed: "show_recently_viewed",
   hot_sellers: "show_hot_sellers", seasonal: "show_seasonal", newsletter: "show_newsletter",
+  age_nav: "show_age_nav", weekly_special: "show_weekly_special", budget_buys: "show_budget_buys",
+  high_cotton: "show_high_cotton", family_matching: "show_family_matching", kids_essentials: "show_kids_essentials",
 };
 
 export function AdminMenLanding({ dark, page = "men" }: Props) {
@@ -68,14 +72,18 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
   const styles = { p, brd, txt, sub, inpBg, hover, inpCls, labelCls, cardCls, btnGhost, btnPrimary, divide };
   const shared = { styles, authed, sb, showToast, uploadImage, page };
 
+  const isKids = page === "kids";
   const TABS = [
     { id: "hero", label: "Hero Banner", icon: Images },
+    ...(isKids ? [{ id: "ages", label: "Age Ranges", icon: Grid3x3 }] : []),
     { id: "collections", label: "Collections", icon: Layout },
     { id: "shop_category", label: "Shop by Category", icon: Grid3x3 },
-    { id: "style", label: "Style Inspiration", icon: Sparkles },
+    { id: "style", label: isKids ? "Seasonal" : "Style Inspiration", icon: Sparkles },
+    ...(isKids ? [{ id: "essentials", label: "Kids Essentials", icon: Sparkles }] : []),
     { id: "brands", label: "Brands", icon: Award },
     { id: "settings", label: "Display & SEO", icon: Settings },
   ];
+  const styleSection = isKids ? "seasonal" : "style";
 
   return (
     <div className="space-y-4">
@@ -93,9 +101,11 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
       </div>
 
       {tab === "hero" && <HeroEditor {...shared} />}
+      {tab === "ages" && <AgeEditor {...shared} />}
       {tab === "collections" && <ListEditor {...shared} table="men_collections" prefix="collections" title="Collections" imageField="image_url" imageLabel="Image" hasCategory={false} />}
       {tab === "shop_category" && <ListEditor {...shared} table="men_shop_categories" prefix="shop-category" title="Shop by Category" imageField="image_url" imageLabel="Image (round)" round hasCategory />}
-      {tab === "style" && <ListEditor {...shared} table="landing_style_looks" prefix="style" title="Style Inspiration" imageField="image_url" imageLabel="Image" hasSubtitle />}
+      {tab === "style" && <ListEditor {...shared} table="landing_style_looks" section={styleSection} prefix="style" title={isKids ? "Seasonal Collections" : "Style Inspiration"} imageField="image_url" imageLabel="Image" hasSubtitle />}
+      {tab === "essentials" && <ListEditor {...shared} table="landing_style_looks" section="essentials" prefix="essentials" title="Kids Essentials" imageField="image_url" imageLabel="Image" />}
       {tab === "brands" && <ListEditor {...shared} table="men_brands" prefix="brands" title="Brands" imageField="logo_url" imageLabel="Logo" hasBrand />}
       {tab === "settings" && <SettingsPanel {...shared} />}
 
@@ -105,7 +115,7 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
 }
 
 /* ============ Generic list editor ============ */
-function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, prefix, title, imageField, imageLabel, round, hasCategory, hasBrand, hasSubtitle }) {
+function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, prefix, title, imageField, imageLabel, round, hasCategory, hasBrand, hasSubtitle, section }) {
   const { p, brd, txt, sub, hover, inpCls, labelCls, cardCls, btnGhost, btnPrimary, divide } = styles;
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -119,7 +129,9 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
   const load = useCallback(async () => {
     try {
       const sel = hasCategory ? "*, category:categories(name)" : hasBrand ? "*, brand:brands(name)" : "*";
-      const reqs = [sb().from(table).select(sel).eq("page", page).order("sort_order")];
+      let q0 = sb().from(table).select(sel).eq("page", page);
+      if (section) q0 = q0.eq("section", section);
+      const reqs = [q0.order("sort_order")];
       if (hasCategory) reqs.push(sb().from("categories").select("id,name").order("name"));
       if (hasBrand) reqs.push(sb().from("brands").select("id,name").order("name"));
       const res = await Promise.all(reqs);
@@ -127,7 +139,7 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
       if (hasCategory) setCats(res[1].data || []);
       if (hasBrand) setBrands(res[1].data || []);
     } catch (e) { showToast(e.message, "error"); } finally { setLoading(false); }
-  }, [table, page, hasCategory, hasBrand, showToast]);
+  }, [table, page, section, hasCategory, hasBrand, showToast]);
   useEffect(() => { load(); }, [load]);
 
   const empty = () => ({ _new: true, name: "", subtitle: "", [imageField]: "", link_url: "", sort_order: rows.length + 1, is_active: true, linked_category_id: "", linked_brand_id: "" });
@@ -139,6 +151,7 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
     try {
       const supabase = await authed();
       const payload = { page, name: d.name, [imageField]: d[imageField] || null, link_url: d.link_url || null, sort_order: Number(d.sort_order) || 100, is_active: !!d.is_active };
+      if (section) payload.section = section;
       if (hasSubtitle) payload.subtitle = d.subtitle || null;
       if (hasCategory) payload.linked_category_id = d.linked_category_id || null;
       if (hasBrand) payload.linked_brand_id = d.linked_brand_id || null;
@@ -342,6 +355,10 @@ function SettingsPanel({ styles, authed, sb, showToast, page }) {
         show_best_sellers: s.show_best_sellers !== false, show_trending: s.show_trending !== false, show_recommended: s.show_recommended !== false,
         show_brands: s.show_brands !== false, show_style_inspiration: s.show_style_inspiration !== false, show_recently_viewed: s.show_recently_viewed !== false,
         show_hot_sellers: s.show_hot_sellers !== false, show_seasonal: s.show_seasonal !== false, show_newsletter: s.show_newsletter !== false,
+        show_age_nav: s.show_age_nav !== false, show_weekly_special: s.show_weekly_special !== false, show_budget_buys: s.show_budget_buys !== false,
+        show_high_cotton: s.show_high_cotton !== false, show_family_matching: s.show_family_matching !== false, show_kids_essentials: s.show_kids_essentials !== false,
+        weekly_special_count: Number(s.weekly_special_count) || 4, budget_buys_count: Number(s.budget_buys_count) || 4,
+        high_cotton_count: Number(s.high_cotton_count) || 4, family_matching_count: Number(s.family_matching_count) || 4,
         new_arrivals_count: Number(s.new_arrivals_count) || 8, best_sellers_count: Number(s.best_sellers_count) || 8,
         recommended_count: Number(s.recommended_count) || 8, super_deals_count: Number(s.super_deals_count) || 8, trending_count: Number(s.trending_count) || 8,
         hot_sellers_count: Number(s.hot_sellers_count) || 4,
@@ -381,7 +398,7 @@ function SettingsPanel({ styles, authed, sb, showToast, page }) {
       <div className={cn(cardCls, "p-4")}>
         <p className={cn("text-sm font-bold mb-3", txt)}>Product counts & style</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {[["New Arrivals", "new_arrivals_count"], ["Super Deals", "super_deals_count"], ["Best Sellers", "best_sellers_count"], ["Trending", "trending_count"], ["Recommended", "recommended_count"]].map(([lab, k]) => (
+          {[["New Arrivals", "new_arrivals_count"], ["Super Deals", "super_deals_count"], ["Best Sellers", "best_sellers_count"], ["Trending", "trending_count"], ["Recommended", "recommended_count"], ["Weekly Special", "weekly_special_count"], ["Budget Buys", "budget_buys_count"], ["High Cotton", "high_cotton_count"], ["Family Matching", "family_matching_count"], ["Hot Sellers", "hot_sellers_count"]].map(([lab, k]) => (
             <div key={k}><label className={labelCls}>{lab}</label><input type="number" min="1" max="24" value={s[k] ?? 8} onChange={(e) => setS((x) => ({ ...x, [k]: e.target.value }))} className={inpCls} /></div>
           ))}
         </div>
@@ -404,6 +421,85 @@ function SettingsPanel({ styles, authed, sb, showToast, page }) {
       </div>
 
       <button onClick={save} disabled={busy} className={cn(btnPrimary, "h-10 px-5")}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Settings</button>
+    </div>
+  );
+}
+
+/* ============ Kids age-range editor ============ */
+function AgeEditor({ styles, authed, sb, showToast, page }) {
+  const { p, brd, txt, sub, hover, inpCls, labelCls, cardCls, btnGhost, btnPrimary, divide } = styles;
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [cats, setCats] = useState([]);
+  const [drawer, setDrawer] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [{ data: a }, { data: c }] = await Promise.all([
+        sb().from("kids_age_ranges").select("*, category:categories(name)").eq("page", page).order("sort_order"),
+        sb().from("categories").select("id,name").order("name"),
+      ]);
+      setRows(a || []); setCats(c || []);
+    } catch (e) { showToast(e.message, "error"); } finally { setLoading(false); }
+  }, [page, showToast]);
+  useEffect(() => { load(); }, [load]);
+
+  const empty = () => ({ _new: true, label: "", linked_category_id: "", sort_order: rows.length + 1, is_active: true });
+  const save = async () => {
+    if (!drawer.label) { showToast("Label is required", "error"); return; }
+    setBusy(true);
+    try {
+      const supabase = await authed();
+      const payload = { page, label: drawer.label, linked_category_id: drawer.linked_category_id || null, sort_order: Number(drawer.sort_order) || 100, is_active: !!drawer.is_active };
+      if (drawer._new) { const { error } = await supabase.from("kids_age_ranges").insert(payload); if (error) throw error; }
+      else { const { error } = await supabase.from("kids_age_ranges").update(payload).eq("id", drawer.id); if (error) throw error; }
+      showToast("Saved"); setDrawer(null); load();
+    } catch (e) { showToast(e.message, "error"); } finally { setBusy(false); }
+  };
+  const remove = async (id) => { try { const s = await authed(); await s.from("kids_age_ranges").delete().eq("id", id); showToast("Deleted"); load(); } catch (e) { showToast(e.message, "error"); } };
+  const toggle = async (r) => { try { const s = await authed(); await s.from("kids_age_ranges").update({ is_active: !r.is_active }).eq("id", r.id); load(); } catch (e) { showToast(e.message, "error"); } };
+
+  if (loading) return <div className={cn("rounded-[16px] border h-32 animate-pulse", p, brd)} />;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className={cn("text-sm font-bold", txt)}>Age Ranges <span className={cn("font-normal", sub)}>· {rows.length}</span></p>
+        <button onClick={() => setDrawer(empty())} className={btnPrimary}><Plus className="w-3.5 h-3.5" /> Add</button>
+      </div>
+      <p className={cn("text-[11px]", sub)}>Each age tab filters all product sections to its linked category (and its sub-categories). Leave the category empty to keep it label-only.</p>
+      <div className={cn(cardCls, "overflow-hidden")}>
+        <table className="w-full text-sm">
+          <thead><tr className={cn("border-b text-left", brd, sub)}>{["Label", "Linked Category", "Order", "Status", ""].map((h, i) => <th key={i} className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider">{h}</th>)}</tr></thead>
+          <tbody className={cn("divide-y", divide)}>
+            {rows.length === 0 ? <tr><td colSpan={5} className={cn("px-4 py-10 text-center", sub)}>No age ranges yet.</td></tr> : rows.map((r) => (
+              <tr key={r.id} className={hover}>
+                <td className="px-3 py-2.5"><span className={cn("font-bold", txt)}>{r.label}</span></td>
+                <td className="px-3 py-2.5"><span className={cn("text-xs", sub)}>{r.category?.name || "—"}</span></td>
+                <td className="px-3 py-2.5"><span className={cn("text-xs font-bold", txt)}>{r.sort_order}</span></td>
+                <td className="px-3 py-2.5"><button onClick={() => toggle(r)} className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ backgroundColor: r.is_active ? "#16a34a1a" : "#8a929c1a", color: r.is_active ? "#16a34a" : "#8a929c" }}>{r.is_active ? "active" : "hidden"}</button></td>
+                <td className="px-3 py-2.5"><div className="flex items-center gap-1"><button onClick={() => setDrawer({ ...r })} className={cn("p-1.5 rounded-lg", hover, sub)}><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => setConfirm({ name: r.label, onConfirm: () => remove(r.id) })} className={cn("p-1.5 rounded-lg text-red-500", hover)}><Trash2 className="w-3.5 h-3.5" /></button></div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {drawer && (
+        <div className="fixed inset-0 z-[110] flex justify-end bg-black/50" onClick={() => setDrawer(null)}>
+          <div className={cn("w-full max-w-md h-full overflow-y-auto border-l p-5 space-y-4", p, brd)} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between"><p className={cn("text-base font-extrabold", txt)}>{drawer._new ? "Add" : "Edit"} Age Range</p><button onClick={() => setDrawer(null)} className={cn("p-1.5 rounded-lg", hover, sub)}><X className="w-4 h-4" /></button></div>
+            <div><label className={labelCls}>Label *</label><input value={drawer.label} onChange={(e) => setDrawer((d) => ({ ...d, label: e.target.value }))} className={inpCls} placeholder="4–7 Yrs" /></div>
+            <div><label className={labelCls}>Linked Category</label><select value={drawer.linked_category_id || ""} onChange={(e) => setDrawer((d) => ({ ...d, linked_category_id: e.target.value }))} className={inpCls}><option value="">— None —</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={labelCls}>Order</label><input type="number" value={drawer.sort_order} onChange={(e) => setDrawer((d) => ({ ...d, sort_order: e.target.value }))} className={inpCls} /></div>
+              <div><label className={labelCls}>Status</label><select value={drawer.is_active ? "1" : "0"} onChange={(e) => setDrawer((d) => ({ ...d, is_active: e.target.value === "1" }))} className={inpCls}><option value="1">Active</option><option value="0">Hidden</option></select></div>
+            </div>
+            <button onClick={save} disabled={busy || !drawer.label} className={cn(btnPrimary, "w-full justify-center h-10")}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save</button>
+          </div>
+        </div>
+      )}
+      {confirm && <ConfirmModal styles={styles} name={confirm.name} onCancel={() => setConfirm(null)} onConfirm={() => { confirm.onConfirm(); setConfirm(null); }} />}
     </div>
   );
 }

@@ -209,16 +209,11 @@ export async function getNavTabs() {
 // A single, page-parameterized engine powers every gender landing page.
 // `page` is the category slug the page is scoped to ('men' | 'women' | …).
 
-export type LandingProductVariant = "new" | "best" | "trending" | "recommended" | "deals";
+export type LandingProductVariant = "new" | "best" | "trending" | "recommended" | "deals" | "budget";
 
-// Resolve a category slug's id plus all descendant category ids.
-export async function getLandingCategoryIds(pageSlug: string): Promise<string[]> {
-  const supabase = createClient();
-  const { data } = await supabase.from("categories").select("id, slug, parent_id");
-  const cats = data || [];
-  const root = cats.find((c: any) => c.slug === pageSlug);
-  if (!root) return [];
-  const ids = new Set<string>([root.id]);
+// Expand a set of root category ids to include all descendants.
+function expandDescendants(cats: any[], rootIds: string[]): string[] {
+  const ids = new Set<string>(rootIds);
   let added = true;
   while (added) {
     added = false;
@@ -227,6 +222,32 @@ export async function getLandingCategoryIds(pageSlug: string): Promise<string[]>
     }
   }
   return Array.from(ids);
+}
+
+// Resolve a category slug's id plus all descendant category ids.
+export async function getLandingCategoryIds(pageSlug: string): Promise<string[]> {
+  const supabase = createClient();
+  const { data } = await supabase.from("categories").select("id, slug, parent_id");
+  const cats = data || [];
+  const root = cats.find((c: any) => c.slug === pageSlug);
+  if (!root) return [];
+  return expandDescendants(cats, [root.id]);
+}
+
+// Resolve a category id plus all its descendant ids.
+export async function getCategorySubtreeIds(catId: string): Promise<string[]> {
+  const supabase = createClient();
+  const { data } = await supabase.from("categories").select("id, parent_id");
+  return expandDescendants(data || [], [catId]);
+}
+
+// Admin-managed Kids age ranges (each optionally scopes to a category subtree).
+export async function getKidsAgeRanges(page: string) {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("kids_age_ranges").select("*, category:categories(slug)")
+    .eq("page", page).eq("is_active", true).order("sort_order");
+  return data || [];
 }
 
 export async function getLandingSettings(page: string) {
@@ -257,11 +278,11 @@ export async function getLandingBrands(page: string) {
   return data || [];
 }
 
-export async function getLandingStyleLooks(page: string) {
+export async function getLandingStyleLooks(page: string, section = "style") {
   const supabase = createClient();
   const { data } = await supabase
     .from("landing_style_looks").select("*")
-    .eq("page", page).eq("is_active", true).order("sort_order");
+    .eq("page", page).eq("section", section).eq("is_active", true).order("sort_order");
   return data || [];
 }
 
@@ -270,9 +291,10 @@ export async function getLandingHeroBanners(page: string) {
 }
 
 // Page-scoped product fetcher. `variant` picks the ordering/flag.
-export async function getLandingProducts(page: string, opts: { variant?: LandingProductVariant; limit?: number } = {}) {
+// `ageCategoryId` (Kids) restricts to that category subtree instead of the page tree.
+export async function getLandingProducts(page: string, opts: { variant?: LandingProductVariant; limit?: number; ageCategoryId?: string } = {}) {
   const supabase = createClient();
-  const ids = await getLandingCategoryIds(page);
+  const ids = opts.ageCategoryId ? await getCategorySubtreeIds(opts.ageCategoryId) : await getLandingCategoryIds(page);
   const limit = opts.limit ?? 8;
 
   const applyVariant = (q: any) => {
@@ -281,6 +303,7 @@ export async function getLandingProducts(page: string, opts: { variant?: Landing
       case "trending": return q.eq("is_trending", true).order("created_at", { ascending: false });
       case "recommended": return q.eq("is_featured", true).order("created_at", { ascending: false });
       case "deals": return q.not("compare_price", "is", null).order("created_at", { ascending: false });
+      case "budget": return q.order("price", { ascending: true });
       default: return q.order("created_at", { ascending: false }); // new arrivals
     }
   };

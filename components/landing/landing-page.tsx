@@ -12,7 +12,7 @@ import { NewsletterSection } from "@/components/sections/newsletter-section";
 import {
   getLandingSettings, getLandingHeroBanners, getLandingCollections, getLandingShopCategories,
   getLandingBrands, getLandingStyleLooks, getLandingProducts, getLandingFlashDeals, getProductsByIds,
-  type LandingProductVariant,
+  getKidsAgeRanges, type LandingProductVariant,
 } from "@/lib/supabase/queries";
 import type { Product } from "@/types";
 
@@ -122,9 +122,24 @@ function ShopCategory({ page }: { page: string }) {
   );
 }
 
+/* ---------------- Age navigation ---------------- */
+function AgeNav({ page, ageId, onSelect }: { page: string; ageId: string | null; onSelect: (catId: string | null, id: string | null) => void }) {
+  const { data } = useQuery(() => getKidsAgeRanges(page), [page]);
+  const items = data || [];
+  if (!items.length) return null;
+  return (
+    <div className="flex items-center gap-5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <button onClick={() => onSelect(null, null)} className={cn("shrink-0 text-[15px] font-bold pb-1.5 border-b-2 transition-colors", ageId === null ? "text-[#2563eb] border-[#2563eb]" : "text-[#4b5563] border-transparent")}>Category</button>
+      {items.map((a: any) => (
+        <button key={a.id} onClick={() => onSelect(a.linked_category_id || null, a.id)} className={cn("shrink-0 text-[15px] font-bold pb-1.5 border-b-2 transition-colors whitespace-nowrap", ageId === a.id ? "text-[#2563eb] border-[#2563eb]" : "text-[#4b5563] border-transparent")}>{a.label}</button>
+      ))}
+    </div>
+  );
+}
+
 /* ---------------- Product grid ---------------- */
-function ProductGrid({ page, title, href, variant, limit }: { page: string; title: string; href?: string; variant?: LandingProductVariant; limit: number }) {
-  const { data, loading } = useQuery(() => getLandingProducts(page, { variant, limit }), [page, variant, limit]);
+function ProductGrid({ page, title, href, variant, limit, ageCategoryId }: { page: string; title: string; href?: string; variant?: LandingProductVariant; limit: number; ageCategoryId?: string | null }) {
+  const { data, loading } = useQuery(() => getLandingProducts(page, { variant, limit, ageCategoryId: ageCategoryId || undefined }), [page, variant, limit, ageCategoryId]);
   const products = data || [];
   if (!loading && !products.length) return null;
   return (
@@ -210,8 +225,8 @@ function FlashSale({ page, accent }: { page: string; accent: string }) {
 }
 
 /* ---------------- Super Deals ---------------- */
-function SuperDeals({ page, limit }: { page: string; limit: number }) {
-  const { data, loading } = useQuery(() => getLandingProducts(page, { variant: "deals", limit }), [page, limit]);
+function SuperDeals({ page, limit, ageCategoryId }: { page: string; limit: number; ageCategoryId?: string | null }) {
+  const { data, loading } = useQuery(() => getLandingProducts(page, { variant: "deals", limit, ageCategoryId: ageCategoryId || undefined }), [page, limit, ageCategoryId]);
   const items = data || [];
   if (!loading && !items.length) return null;
   return (
@@ -251,8 +266,8 @@ function Brands({ page }: { page: string }) {
 }
 
 /* ---------------- Style Inspiration ---------------- */
-function StyleInspiration({ page, title = "STYLE INSPIRATION" }: { page: string; title?: string }) {
-  const { data } = useQuery(() => getLandingStyleLooks(page), [page]);
+function StyleInspiration({ page, title = "STYLE INSPIRATION", section = "style" }: { page: string; title?: string; section?: string }) {
+  const { data } = useQuery(() => getLandingStyleLooks(page, section), [page, section]);
   const items = data || [];
   if (!items.length) return null;
   return (
@@ -297,10 +312,36 @@ function RecentlyViewed() {
   );
 }
 
+/* ---------------- Kids Essentials (tiles from style looks) ---------------- */
+function KidsEssentials({ page }: { page: string }) {
+  const { data } = useQuery(() => getLandingStyleLooks(page, "essentials"), [page]);
+  const items = data || [];
+  if (!items.length) return null;
+  return (
+    <div>
+      <SectionHead title="KIDS ESSENTIALS" />
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        {items.map((e: any) => (
+          <Link key={e.id} href={e.link_url || `/category/${page}`} className="group">
+            <div className="aspect-square rounded-[16px] overflow-hidden bg-[#f4f5f7] ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1">
+              {e.image_url && /* eslint-disable-next-line @next/next/no-img-element */ <img src={e.image_url} alt={e.name} loading="lazy" className="w-full h-full object-cover" />}
+            </div>
+            <div className="text-[12px] sm:text-[13px] font-semibold text-[#16181d] text-center mt-2 line-clamp-1">{e.name}</div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Orchestrator ---------------- */
 export function LandingPage({ page }: { page: string }) {
   const { data: settings } = useQuery(() => getLandingSettings(page), [page]);
   const s: any = settings || {};
+
+  // Kids age-range filter (null = all ages). `ageCat` scopes product sections.
+  const [age, setAge] = useState<{ catId: string | null; id: string | null }>({ catId: null, id: null });
+  const ageCat = age.catId;
 
   const naCount = s.new_arrivals_count ?? 8;
   const bsCount = s.best_sellers_count ?? 8;
@@ -308,6 +349,10 @@ export function LandingPage({ page }: { page: string }) {
   const sdCount = s.super_deals_count ?? 8;
   const trCount = s.trending_count ?? 8;
   const hsCount = s.hot_sellers_count ?? 4;
+  const wsCount = s.weekly_special_count ?? 4;
+  const bbCount = s.budget_buys_count ?? 4;
+  const hcCount = s.high_cotton_count ?? 4;
+  const fmCount = s.family_matching_count ?? 4;
   const accent = s.flash_accent || "#2563eb";
 
   const defaultOrder = ["hero", "collections", "shop_category", "new_arrivals", "flash_sale", "super_deals", "best_sellers", "brands", "recommended"];
@@ -321,6 +366,8 @@ export function LandingPage({ page }: { page: string }) {
       best_sellers: s.show_best_sellers, trending: s.show_trending, recommended: s.show_recommended,
       brands: s.show_brands, style_inspiration: s.show_style_inspiration, recently_viewed: s.show_recently_viewed,
       hot_sellers: s.show_hot_sellers, seasonal: s.show_seasonal, newsletter: s.show_newsletter,
+      age_nav: s.show_age_nav, weekly_special: s.show_weekly_special, budget_buys: s.show_budget_buys,
+      high_cotton: s.show_high_cotton, family_matching: s.show_family_matching, kids_essentials: s.show_kids_essentials,
     };
     return map[key] !== false;
   };
@@ -328,18 +375,24 @@ export function LandingPage({ page }: { page: string }) {
   const render = (key: string) => {
     switch (key) {
       case "hero": return <Hero page={page} />;
+      case "age_nav": return <AgeNav page={page} ageId={age.id} onSelect={(catId, id) => setAge({ catId, id })} />;
       case "collections": return <Collections page={page} />;
       case "shop_category": return <ShopCategory page={page} />;
-      case "new_arrivals": return <ProductGrid page={page} title="NEW ARRIVALS" href="/new-arrivals" variant="new" limit={naCount} />;
+      case "new_arrivals": return <ProductGrid page={page} title="NEW ARRIVALS" href="/new-arrivals" variant="new" limit={naCount} ageCategoryId={ageCat} />;
       case "flash_sale": return <FlashSale page={page} accent={accent} />;
-      case "super_deals": return <SuperDeals page={page} limit={sdCount} />;
-      case "best_sellers": return <ProductGrid page={page} title="BEST SELLERS" href="/best-sellers" variant="best" limit={bsCount} />;
-      case "trending": return <ProductGrid page={page} title="TRENDING NOW" variant="trending" limit={trCount} />;
-      case "recommended": return <ProductGrid page={page} title="RECOMMENDED FOR YOU" variant="recommended" limit={recCount} />;
+      case "super_deals": return <SuperDeals page={page} limit={sdCount} ageCategoryId={ageCat} />;
+      case "weekly_special": return <ProductGrid page={page} title="WEEKLY SPECIAL" href="/deals" variant="deals" limit={wsCount} ageCategoryId={ageCat} />;
+      case "budget_buys": return <ProductGrid page={page} title="BUDGET BUYS" variant="budget" limit={bbCount} ageCategoryId={ageCat} />;
+      case "high_cotton": return <ProductGrid page={page} title="HIGH COTTON" variant="best" limit={hcCount} ageCategoryId={ageCat} />;
+      case "family_matching": return <ProductGrid page={page} title="FAMILY MATCHING" variant="trending" limit={fmCount} ageCategoryId={ageCat} />;
+      case "best_sellers": return <ProductGrid page={page} title="BEST SELLERS" href="/best-sellers" variant="best" limit={bsCount} ageCategoryId={ageCat} />;
+      case "trending": return <ProductGrid page={page} title="TRENDING NOW" variant="trending" limit={trCount} ageCategoryId={ageCat} />;
+      case "recommended": return <ProductGrid page={page} title="RECOMMENDED FOR YOU" variant="recommended" limit={recCount} ageCategoryId={ageCat} />;
       case "brands": return <Brands page={page} />;
       case "style_inspiration": return <StyleInspiration page={page} />;
-      case "seasonal": return <StyleInspiration page={page} title="SEASONAL COLLECTIONS" />;
-      case "hot_sellers": return <ProductGrid page={page} title="HOT SELLERS" variant="best" limit={hsCount} />;
+      case "seasonal": return <StyleInspiration page={page} title="SEASONAL COLLECTIONS" section={page === "kids" ? "seasonal" : "style"} />;
+      case "kids_essentials": return <KidsEssentials page={page} />;
+      case "hot_sellers": return <ProductGrid page={page} title="HOT SELLERS" variant="best" limit={hsCount} ageCategoryId={ageCat} />;
       case "recently_viewed": return <RecentlyViewed />;
       case "newsletter": return <NewsletterSection />;
       default: return null;

@@ -113,6 +113,7 @@ const navGroups: NavGroup[] = [
       { id: "menlanding", label: "Men", icon: Layout },
       { id: "womenlanding", label: "Women", icon: Layout },
       { id: "curvelanding", label: "Curve", icon: Layout },
+      { id: "kidslanding", label: "Kids", icon: Layout },
     ],
   },
   {

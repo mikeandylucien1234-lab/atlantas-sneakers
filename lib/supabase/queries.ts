@@ -205,18 +205,20 @@ export async function getNavTabs() {
   return data || [];
 }
 
-// ================= MEN LANDING PAGE (/men) =================
+// ================= LANDING PAGES (/men, /women, …) =================
+// A single, page-parameterized engine powers every gender landing page.
+// `page` is the category slug the page is scoped to ('men' | 'women' | …).
 
-// Resolve the "Men" category id plus all its descendant category ids so we can
-// filter the catalog to men's products. Cached per call.
-export async function getMenCategoryIds(): Promise<string[]> {
+export type LandingProductVariant = "new" | "best" | "trending" | "recommended" | "deals";
+
+// Resolve a category slug's id plus all descendant category ids.
+export async function getLandingCategoryIds(pageSlug: string): Promise<string[]> {
   const supabase = createClient();
   const { data } = await supabase.from("categories").select("id, slug, parent_id");
   const cats = data || [];
-  const men = cats.find((c: any) => c.slug === "men");
-  if (!men) return [];
-  const ids = new Set<string>([men.id]);
-  // walk descendants (a couple levels is plenty)
+  const root = cats.find((c: any) => c.slug === pageSlug);
+  if (!root) return [];
+  const ids = new Set<string>([root.id]);
   let added = true;
   while (added) {
     added = false;
@@ -227,74 +229,96 @@ export async function getMenCategoryIds(): Promise<string[]> {
   return Array.from(ids);
 }
 
-export async function getMenSettings() {
+export async function getLandingSettings(page: string) {
   const supabase = createClient();
-  const { data } = await supabase.from("men_page_settings").select("*").eq("id", "men").maybeSingle();
+  const { data } = await supabase.from("men_page_settings").select("*").eq("id", page).maybeSingle();
   return data || null;
 }
 
-export async function getMenCollections() {
+export async function getLandingCollections(page: string) {
   const supabase = createClient();
-  const { data } = await supabase.from("men_collections").select("*").eq("is_active", true).order("sort_order");
+  const { data } = await supabase.from("men_collections").select("*").eq("page", page).eq("is_active", true).order("sort_order");
   return data || [];
 }
 
-export async function getMenShopCategories() {
+export async function getLandingShopCategories(page: string) {
   const supabase = createClient();
   const { data } = await supabase
-    .from("men_shop_categories")
-    .select("*, category:categories(slug)")
-    .eq("is_active", true).order("sort_order");
+    .from("men_shop_categories").select("*, category:categories(slug)")
+    .eq("page", page).eq("is_active", true).order("sort_order");
   return data || [];
 }
 
-export async function getMenBrands() {
+export async function getLandingBrands(page: string) {
   const supabase = createClient();
   const { data } = await supabase
-    .from("men_brands")
-    .select("*, brand:brands(slug)")
-    .eq("is_active", true).order("sort_order");
+    .from("men_brands").select("*, brand:brands(slug)")
+    .eq("page", page).eq("is_active", true).order("sort_order");
   return data || [];
 }
 
-export async function getMenHeroBanners() {
-  return getBannersByLocation("men_hero");
+export async function getLandingStyleLooks(page: string) {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("landing_style_looks").select("*")
+    .eq("page", page).eq("is_active", true).order("sort_order");
+  return data || [];
 }
 
-// Generic men product fetcher. `variant` picks the ordering/flag.
-export async function getMenProducts(opts: { variant?: "new" | "best" | "recommended" | "deals"; limit?: number } = {}) {
+export async function getLandingHeroBanners(page: string) {
+  return getBannersByLocation(`${page}_hero`);
+}
+
+// Page-scoped product fetcher. `variant` picks the ordering/flag.
+export async function getLandingProducts(page: string, opts: { variant?: LandingProductVariant; limit?: number } = {}) {
   const supabase = createClient();
-  const ids = await getMenCategoryIds();
+  const ids = await getLandingCategoryIds(page);
   const limit = opts.limit ?? 8;
+
+  const applyVariant = (q: any) => {
+    switch (opts.variant) {
+      case "best": return q.eq("is_best_seller", true).order("created_at", { ascending: false });
+      case "trending": return q.eq("is_trending", true).order("created_at", { ascending: false });
+      case "recommended": return q.eq("is_featured", true).order("created_at", { ascending: false });
+      case "deals": return q.not("compare_price", "is", null).order("created_at", { ascending: false });
+      default: return q.order("created_at", { ascending: false }); // new arrivals
+    }
+  };
 
   let query = supabase.from("products").select(PRODUCT_SELECT).eq("status", "active");
   if (ids.length) query = query.in("category_id", ids);
-
-  switch (opts.variant) {
-    case "best": query = query.eq("is_best_seller", true).order("created_at", { ascending: false }); break;
-    case "recommended": query = query.eq("is_trending", true).order("created_at", { ascending: false }); break;
-    case "deals": query = query.not("compare_price", "is", null).order("created_at", { ascending: false }); break;
-    default: query = query.order("created_at", { ascending: false }); // new arrivals
-  }
-  query = query.limit(limit);
-
+  query = applyVariant(query).limit(limit);
   const { data } = await query;
   if (data && data.length) return data as Product[];
 
-  // Fallback so a section is never empty on a thin catalog: same variant without the Men filter.
+  // Fallback so a section is never empty: same variant without the category filter…
   let fb = supabase.from("products").select(PRODUCT_SELECT).eq("status", "active");
-  if (opts.variant === "deals") fb = fb.not("compare_price", "is", null);
-  const { data: fbData } = await fb.order("created_at", { ascending: false }).limit(limit);
-  return (fbData || []) as Product[];
+  fb = applyVariant(fb).limit(limit);
+  const { data: fbData } = await fb;
+  if (fbData && fbData.length) return fbData as Product[];
+
+  // …last resort: newest active products (keeps trending/best/recommended visible).
+  const { data: any } = await supabase.from("products").select(PRODUCT_SELECT)
+    .eq("status", "active").order("created_at", { ascending: false }).limit(limit);
+  return (any || []) as Product[];
 }
 
-// Flash-sale products restricted to men's categories (reuses flash_deals).
-export async function getMenFlashDeals() {
+// Flash-sale products restricted to the page's categories (reuses flash_deals).
+export async function getLandingFlashDeals(page: string) {
   const all = await getFlashDeals();
-  const ids = new Set(await getMenCategoryIds());
+  const ids = new Set(await getLandingCategoryIds(page));
   if (!ids.size) return all;
-  const men = all.filter((d: any) => d.product && ids.has(d.product.category_id));
-  return men.length ? men : all;
+  const scoped = all.filter((d: any) => d.product && ids.has(d.product.category_id));
+  return scoped.length ? scoped : all;
+}
+
+// Fetch specific products by id (for Recently Viewed), preserving order.
+export async function getProductsByIds(ids: string[]) {
+  if (!ids.length) return [] as Product[];
+  const supabase = createClient();
+  const { data } = await supabase.from("products").select(PRODUCT_SELECT).in("id", ids).eq("status", "active");
+  const map = new Map((data || []).map((p: any) => [p.id, p]));
+  return ids.map((id) => map.get(id)).filter(Boolean) as Product[];
 }
 
 // Active coupons for the storefront "Special Offers" section.

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { recordRecentlyViewed } from "@/lib/hooks/use-recently-viewed";
 import Image from "next/image";
 import Link from "next/link";
 import { Heart, Share2, ShoppingCart, ChevronDown, Truck, Shield, RefreshCw, Star } from "lucide-react";
@@ -62,6 +63,9 @@ export default function ProductPage() {
     () => product ? getRelatedProducts(product.id, product.category_id) : Promise.resolve([]),
     [product?.id]
   );
+
+  // Record this product for the "Recently Viewed" landing-page sections.
+  useEffect(() => { if (product?.id) recordRecentlyViewed(product.id); }, [product?.id]);
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);

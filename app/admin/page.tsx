@@ -224,7 +224,9 @@ export default function AdminPage() {
       case "navtabs":
         return <AdminHomepageNavTabs dark={dark} />;
       case "menlanding":
-        return <AdminMenLanding dark={dark} />;
+        return <AdminMenLanding dark={dark} page="men" />;
+      case "womenlanding":
+        return <AdminMenLanding dark={dark} page="women" />;
       case "addproduct":
         return <ProductCreate dark={dark} onBack={() => setActiveModule("products")} />;
       case "editproduct":

@@ -23,7 +23,7 @@ const SECTION_LABELS = {
   high_cotton: "High Cotton", family_matching: "Family Matching", kids_essentials: "Kids Essentials",
   guarantee: "Guarantee Bar", quick_filters: "Quick Filters", hot_sales: "Hot Sales",
   local_stock: "Local Stock", ship_today: "Shipped Today", why_quickship: "Why QuickShip",
-  bundles: "Bundles", loyalty: "Loyalty Program",
+  bundles: "Bundles", loyalty: "Loyalty Program", local_shipping: "Local Shipping",
 };
 const VIS_MAP = {
   hero: "show_hero", collections: "show_collections", shop_category: "show_shop_category",
@@ -35,7 +35,7 @@ const VIS_MAP = {
   high_cotton: "show_high_cotton", family_matching: "show_family_matching", kids_essentials: "show_kids_essentials",
   guarantee: "show_guarantee", quick_filters: "show_quick_filters", hot_sales: "show_hot_sales",
   local_stock: "show_local_stock", ship_today: "show_ship_today", why_quickship: "show_why",
-  bundles: "show_bundles", loyalty: "show_loyalty",
+  bundles: "show_bundles", loyalty: "show_loyalty", local_shipping: "show_local_shipping",
 };
 
 export function AdminMenLanding({ dark, page = "men" }: Props) {
@@ -80,15 +80,17 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
 
   const isKids = page === "kids";
   const isBeauty = page === "beauty";
-  const hasTabs = isKids || isBeauty; // pages with a horizontal tab nav
+  const isHome = page === "home";
+  const hasTabs = isKids || isBeauty || isHome; // pages with a horizontal tab nav
+  const hasBundles = isBeauty || isHome;
   const TABS = [
     { id: "hero", label: "Hero Banner", icon: Images },
-    ...(hasTabs ? [{ id: "ages", label: isBeauty ? "Category Tabs" : "Age Ranges", icon: Grid3x3 }] : []),
+    ...(hasTabs ? [{ id: "ages", label: isKids ? "Age Ranges" : "Category Tabs", icon: Grid3x3 }] : []),
     { id: "collections", label: "Collections", icon: Layout },
     { id: "shop_category", label: "Shop by Category", icon: Grid3x3 },
     { id: "style", label: isKids ? "Seasonal" : "Style Inspiration", icon: Sparkles },
     ...(isKids ? [{ id: "essentials", label: "Kids Essentials", icon: Sparkles }] : []),
-    ...(isBeauty ? [{ id: "bundles", label: "Bundles", icon: Sparkles }] : []),
+    ...(hasBundles ? [{ id: "bundles", label: "Bundles", icon: Sparkles }] : []),
     { id: "brands", label: "Brands", icon: Award },
     { id: "settings", label: "Display & SEO", icon: Settings },
   ];
@@ -369,7 +371,7 @@ function SettingsPanel({ styles, authed, sb, showToast, page }) {
         show_high_cotton: s.show_high_cotton !== false, show_family_matching: s.show_family_matching !== false, show_kids_essentials: s.show_kids_essentials !== false,
         show_guarantee: s.show_guarantee !== false, show_quick_filters: s.show_quick_filters !== false, show_hot_sales: s.show_hot_sales !== false,
         show_local_stock: s.show_local_stock !== false, show_ship_today: s.show_ship_today !== false, show_why: s.show_why !== false,
-        show_bundles: s.show_bundles !== false, show_loyalty: s.show_loyalty !== false,
+        show_bundles: s.show_bundles !== false, show_loyalty: s.show_loyalty !== false, show_local_shipping: s.show_local_shipping !== false,
         hot_sales_count: Number(s.hot_sales_count) || 8,
         weekly_special_count: Number(s.weekly_special_count) || 4, budget_buys_count: Number(s.budget_buys_count) || 4,
         high_cotton_count: Number(s.high_cotton_count) || 4, family_matching_count: Number(s.family_matching_count) || 4,

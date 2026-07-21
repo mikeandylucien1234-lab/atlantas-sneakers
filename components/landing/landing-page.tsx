@@ -522,7 +522,7 @@ export function LandingPage({ page }: { page: string }) {
       high_cotton: s.show_high_cotton, family_matching: s.show_family_matching, kids_essentials: s.show_kids_essentials,
       guarantee: s.show_guarantee, quick_filters: s.show_quick_filters, hot_sales: s.show_hot_sales,
       local_stock: s.show_local_stock, ship_today: s.show_ship_today, why_quickship: s.show_why,
-      bundles: s.show_bundles, loyalty: s.show_loyalty,
+      bundles: s.show_bundles, loyalty: s.show_loyalty, local_shipping: s.show_local_shipping,
     };
     return map[key] !== false;
   };
@@ -534,6 +534,7 @@ export function LandingPage({ page }: { page: string }) {
       case "guarantee": return <GuaranteeBar />;
       case "quick_filters": return <QuickFilters value={maxHours} onChange={setMaxHours} />;
       case "hot_sales": return <QuickShipGrid title="HOT SALES" href="/shop" variant="deals" limit={s.hot_sales_count ?? 8} maxHours={qh} />;
+      case "local_shipping": return <QuickShipGrid title="LOCAL SHIPPING" variant="best" limit={8} />;
       case "local_stock": return <QuickShipGrid title="DISPONIBLE DANS VOTRE RÉGION" variant="best" limit={8} maxHours={qh} />;
       case "ship_today": return <QuickShipGrid title="EXPÉDIÉ AUJOURD'HUI" variant="new" limit={8} maxHours={24} />;
       case "why_quickship": return <WhyQuickShip />;

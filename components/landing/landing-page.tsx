@@ -84,11 +84,11 @@ function Collections({ page }: { page: string }) {
       <SectionHead title={page === "women" ? "WOMEN'S COLLECTIONS" : "COLLECTIONS"} />
       <div className="flex gap-3 overflow-x-auto pb-2 snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {items.map((c: any) => (
-          <Link key={c.id} href={c.link_url || `/category/${page}`} className="relative shrink-0 w-[45%] sm:w-[220px] aspect-[3/4] rounded-[14px] overflow-hidden snap-start group">
+          <Link key={c.id} href={c.link_url || `/category/${page}`} className="relative shrink-0 w-[30%] sm:w-[150px] aspect-[4/5] rounded-[12px] overflow-hidden snap-start group">
             {c.image_url && /* eslint-disable-next-line @next/next/no-img-element */ (
               <img src={c.image_url} alt={c.name} loading="lazy" className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
             )}
-            <div className="absolute inset-x-0 bottom-0 bg-black/70 px-3 py-2.5"><span className="text-white text-[14px] font-bold">{c.name}</span></div>
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2"><span className="text-white text-[12px] sm:text-[13px] font-bold leading-tight line-clamp-2">{c.name}</span></div>
           </Link>
         ))}
       </div>

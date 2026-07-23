@@ -27,7 +27,9 @@ export function ownerConfig(): OwnerConfig {
   if (!cfg.email || !cfg.password) {
     const candidates = [
       path.join(process.cwd(), "owner-vault.config.json"),
+      path.join(process.cwd(), "ownervault.config.json"),
       path.join(process.cwd(), ".owner-vault.json"),
+      path.join(process.cwd(), ".ownervault.json"),
     ];
     for (const file of candidates) {
       try {

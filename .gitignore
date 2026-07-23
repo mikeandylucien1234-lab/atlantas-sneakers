@@ -44,3 +44,5 @@ next-env.d.ts
 # Owner Vault local credentials (never commit)
 owner-vault.config.json
 .owner-vault.json
+ownervault.config.json
+.ownervault.json

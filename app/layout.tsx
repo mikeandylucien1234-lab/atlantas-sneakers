@@ -5,6 +5,7 @@ import { AnnouncementBar } from "@/components/layout/announcement-bar";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { FloatingOfferButton } from "@/components/promo/floating-offer-button";
 import { ToastProvider } from "@/components/ui/toast";
 import { AuthListener } from "@/components/auth-listener";
 import { AnalyticsTracker } from "@/components/analytics/analytics-tracker";
@@ -89,6 +90,7 @@ export default async function RootLayout({
           </main>
           <Footer />
           <BottomNav />
+          <FloatingOfferButton />
         </ToastProvider>
       </body>
     </html>

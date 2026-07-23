@@ -9,7 +9,6 @@ import { FlashSales } from "@/components/sections/flash-sales";
 import { BestSellersNewArrivals } from "@/components/sections/best-sellers-new-arrivals";
 import { SpecialOffers } from "@/components/sections/special-offers";
 import { InfoDisclosure } from "@/components/sections/info-disclosure";
-import { NewsletterSection } from "@/components/sections/newsletter-section";
 import { PromoSuggestions } from "@/components/sections/promo-suggestions";
 
 export default function HomePage() {
@@ -24,7 +23,6 @@ export default function HomePage() {
       <FlashSales />
       <PromoSuggestions />
       <InfoDisclosure />
-      <NewsletterSection />
     </>
   );
 }

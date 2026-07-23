@@ -1,12 +1,4 @@
 import Link from "next/link";
-import { Lock } from "lucide-react";
-
-const shopLinks = [
-  { label: "New Arrivals", href: "/new-arrivals" },
-  { label: "Best Sellers", href: "/best-sellers" },
-  { label: "Shop All", href: "/shop" },
-  { label: "Deals", href: "/deals" },
-];
 
 const helpLinks = [
   { label: "Track Order", href: "/track" },
@@ -17,7 +9,6 @@ const companyLinks = [
 ];
 
 const socials = ["IG", "TT", "YT", "FB", "X"];
-const payments = ["VISA", "MC", "AMEX", "PayPal", "Pay", "GPay"];
 
 function FooterColumn({ title, links }: { title: string; links: { label: string; href: string }[] }) {
   return (
@@ -37,7 +28,7 @@ function FooterColumn({ title, links }: { title: string; links: { label: string;
 export function Footer() {
   return (
     <footer className="mt-12 border-t border-[#eef0f3] bg-white">
-      <div className="max-w-[1240px] mx-auto px-4 pt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1.7fr_1fr_1.2fr_1.1fr_1.25fr] gap-[30px]">
+      <div className="max-w-[1240px] mx-auto px-4 pt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1.2fr] gap-[30px]">
         {/* Brand */}
         <div>
           <div className="font-extrabold text-[18px] tracking-[-.01em] mb-[14px]">
@@ -60,33 +51,8 @@ export function Footer() {
           </div>
         </div>
 
-        <FooterColumn title="SHOP" links={shopLinks} />
         <FooterColumn title="HELP" links={helpLinks} />
         <FooterColumn title="ABOUT US" links={companyLinks} />
-
-        {/* Payment */}
-        <div>
-          <div className="text-[13px] font-extrabold tracking-[.04em] text-[#16181d] mb-[15px]">PAYMENT METHODS</div>
-          <div className="grid grid-cols-4 gap-[7px] max-w-[200px]">
-            {payments.map((p) => (
-              <div
-                key={p}
-                className="h-[30px] bg-white border border-[#e4e7eb] rounded-[6px] flex items-center justify-center text-[9px] font-extrabold text-[#374151] tracking-[.02em] shadow-[0_1px_2px_rgba(16,24,40,.05)]"
-              >
-                {p}
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-[9px] mt-[18px]">
-            <div className="w-[38px] h-[38px] rounded-full border-[1.5px] border-[#d1d5db] flex items-center justify-center shrink-0">
-              <Lock className="w-[18px] h-[18px] text-[#16a34a]" />
-            </div>
-            <div className="text-[10px] font-bold text-[#4b5563] leading-[1.3]">
-              SSL SECURE<br />
-              <span className="text-[#9aa3ad]">256-BIT ENCRYPTION</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Bottom bar */}

@@ -25,14 +25,28 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ba, bb);
 }
 
+// Strip a single pair of surrounding quotes some env systems keep (e.g. "~pw").
+function unquote(v: string): string {
+  const t = v.trim();
+  if (t.length >= 2 && ((t[0] === '"' && t.at(-1) === '"') || (t[0] === "'" && t.at(-1) === "'"))) {
+    return t.slice(1, -1);
+  }
+  return v;
+}
+
+// True when the owner credentials are present in the server environment.
+export function ownerConfigured(): boolean {
+  return !!(process.env.OWNER_EMAIL && process.env.OWNER_PASSWORD);
+}
+
 // Validate the owner credentials against the environment (never hardcoded).
 export function checkOwnerCredentials(email: string, password: string): boolean {
   const OE = process.env.OWNER_EMAIL;
   const OP = process.env.OWNER_PASSWORD;
   if (!OE || !OP) return false;
   return (
-    safeEqual(email.trim().toLowerCase(), OE.trim().toLowerCase()) &&
-    safeEqual(password, OP)
+    safeEqual(email.trim().toLowerCase(), unquote(OE).trim().toLowerCase()) &&
+    safeEqual(password.trim(), unquote(OP).trim())
   );
 }
 

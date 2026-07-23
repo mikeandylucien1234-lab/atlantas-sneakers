@@ -23,7 +23,12 @@ export default function OwnerVaultLogin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) { setError("Accès refusé."); setLoading(false); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Accès refusé.");
+        setLoading(false);
+        return;
+      }
       router.replace("/owner-vault");
     } catch {
       setError("Accès refusé.");

@@ -8,7 +8,6 @@ import { TrendingNow } from "@/components/sections/trending-now";
 import { FlashSales } from "@/components/sections/flash-sales";
 import { BestSellersNewArrivals } from "@/components/sections/best-sellers-new-arrivals";
 import { SpecialOffers } from "@/components/sections/special-offers";
-import { CollectionBanners } from "@/components/sections/collection-banners";
 import { TrustBadges } from "@/components/sections/trust-badges";
 import { NewsletterSection } from "@/components/sections/newsletter-section";
 import { PromoSuggestions } from "@/components/sections/promo-suggestions";
@@ -18,13 +17,12 @@ export default function HomePage() {
     <>
       <HeroCarousel />
       <FeatureCards />
-      <PromoSuggestions />
       <ShopByCategory />
       <DealsRanking />
       <TrendingNow />
       <BestSellersNewArrivals middle={<SpecialOffers />} />
       <FlashSales />
-      <CollectionBanners />
+      <PromoSuggestions />
       <TrustBadges />
       <NewsletterSection />
     </>

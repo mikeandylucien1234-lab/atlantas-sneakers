@@ -19,9 +19,9 @@ export function PromoSuggestions() {
   }));
 
   return (
-    <section className="my-8">
+    <section className="mt-10">
       <h2 className="mb-4 text-[19px] font-extrabold tracking-[-0.01em] text-[#16181d]">Sugerencias</h2>
-      <div className="max-w-[640px]">
+      <div className="mx-auto max-w-[560px]">
         <PromoSuggestionsCarousel cards={cards} />
       </div>
     </section>

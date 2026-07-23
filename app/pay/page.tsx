@@ -9,7 +9,7 @@ import { CardForm } from "@/components/pay/card-form";
 type Method = "mycash" | "natcash" | "paypal" | "cashapp" | "card";
 
 const METHODS: { id: Method; name: string; desc: string; badge: string; color: string }[] = [
-  { id: "mycash", name: "My Cash", desc: "Pay with your My Cash balance", badge: "MC", color: "#16a34a" },
+  { id: "mycash", name: "My Cash", desc: "Pay with MonCash · via Bazik", badge: "MC", color: "#16a34a" },
   { id: "natcash", name: "Natcash", desc: "Pay with your Natcash balance", badge: "N", color: "#dc2626" },
   { id: "paypal", name: "PayPal", desc: "Pay securely with PayPal", badge: "P", color: "#2563eb" },
   { id: "cashapp", name: "Cash App", desc: "Pay easily with Cash App", badge: "$", color: "#16a34a" },
@@ -20,6 +20,38 @@ export default function PayPage() {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<Method | null>(null);
   const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pay = async () => {
+    setError(null);
+    // My Cash → real MonCash payment through Bazik (redirect to checkout).
+    if (method === "mycash") {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/payments/bazik/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: Number(amount), description: "Atlanta Sneakers test payment" }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.redirectUrl) throw new Error(data.error || "Could not start MonCash payment");
+        window.location.href = data.redirectUrl;
+        return;
+      } catch (e: any) {
+        setError(e.message || "Payment failed");
+        setLoading(false);
+      }
+      return;
+    }
+    // Natcash: Bazik only supports NatCash for payouts/transfers, not inbound charges.
+    if (method === "natcash") {
+      setError("NatCash payments aren't available through Bazik yet (MonCash only). Choose My Cash to test.");
+      return;
+    }
+    // Other methods remain a front-end demo for now.
+    setDone(true);
+  };
 
   if (done) {
     return (
@@ -76,13 +108,16 @@ export default function PayPage() {
       </div>
 
       {method === "card" && <CardForm />}
+      {method === "mycash" && <p className="mt-3 text-[12px] text-[#6b7280]">MonCash is charged in HTG (gourdes). The amount above is sent as-is to Bazik for this test.</p>}
+
+      {error && <p className="mt-4 rounded-xl bg-[#fef2f2] px-3 py-2.5 text-[13px] font-semibold text-[#dc2626]">{error}</p>}
 
       <button
-        disabled={!method || !Number(amount)}
-        onClick={() => setDone(true)}
+        disabled={!method || !Number(amount) || loading}
+        onClick={pay}
         className="mt-5 w-full rounded-xl bg-[#2563eb] py-3.5 text-[15px] font-extrabold text-white transition enabled:hover:bg-[#1d4ed8] enabled:active:scale-[.99] disabled:opacity-50"
       >
-        Pay {Number(amount) ? `$${Number(amount).toFixed(2)}` : "now"}
+        {loading ? "Redirecting to MonCash…" : method === "mycash" ? `Pay ${Number(amount) ? `${Number(amount).toFixed(2)} HTG` : "now"}` : `Pay ${Number(amount) ? `$${Number(amount).toFixed(2)}` : "now"}`}
       </button>
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-[#9aa3ad]"><ShieldCheck className="h-3.5 w-3.5" /> Payments are encrypted and secure</p>
     </div>

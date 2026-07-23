@@ -8,7 +8,7 @@ import { TrendingNow } from "@/components/sections/trending-now";
 import { FlashSales } from "@/components/sections/flash-sales";
 import { BestSellersNewArrivals } from "@/components/sections/best-sellers-new-arrivals";
 import { SpecialOffers } from "@/components/sections/special-offers";
-import { TrustBadges } from "@/components/sections/trust-badges";
+import { InfoDisclosure } from "@/components/sections/info-disclosure";
 import { NewsletterSection } from "@/components/sections/newsletter-section";
 import { PromoSuggestions } from "@/components/sections/promo-suggestions";
 
@@ -23,7 +23,7 @@ export default function HomePage() {
       <BestSellersNewArrivals middle={<SpecialOffers />} />
       <FlashSales />
       <PromoSuggestions />
-      <TrustBadges />
+      <InfoDisclosure />
       <NewsletterSection />
     </>
   );

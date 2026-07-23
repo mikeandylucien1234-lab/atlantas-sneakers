@@ -11,7 +11,7 @@ function baseUrl(): string {
 export default async function robots(): Promise<MetadataRoute.Robots> {
   const base = baseUrl();
   const fallback: MetadataRoute.Robots = {
-    rules: { userAgent: "*", allow: "/", disallow: ["/admin", "/api", "/checkout", "/cart"] },
+    rules: { userAgent: "*", allow: "/", disallow: ["/admin", "/api", "/checkout", "/cart", "/owner-vault"] },
     sitemap: `${base}/sitemap.xml`,
   };
 

@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { ovAdmin } from "@/lib/owner-vault/db";
+import { ownerConfig } from "@/lib/owner-vault/config";
 
 export const runtime = "nodejs";
 
 // Dedicated Stripe webhook for Owner Vault subscriptions. Uses its OWN signing
 // secret so it never interferes with any existing Stripe webhook.
 export async function POST(request: NextRequest) {
-  const secret = process.env.OWNER_STRIPE_WEBHOOK_SECRET;
+  const secret = ownerConfig().stripeWebhookSecret;
   const sig = request.headers.get("stripe-signature");
   const raw = await request.text();
   if (!secret || !sig) return Response.json({ error: "Not configured" }, { status: 400 });

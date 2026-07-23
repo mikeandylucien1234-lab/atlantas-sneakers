@@ -1,15 +1,17 @@
 import "server-only";
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { ownerConfig } from "./config";
 
 export const OV_COOKIE = "ov_session";
 const MAX_AGE = 60 * 60 * 8; // 8h
 
 function secret(): string {
-  // Derive a signing secret from env; never hardcode credentials.
+  // Derive a signing secret from config; never hardcode credentials.
+  const cfg = ownerConfig();
   return (
-    process.env.OWNER_SESSION_SECRET ||
-    (process.env.OWNER_PASSWORD ? crypto.createHash("sha256").update("ov|" + process.env.OWNER_PASSWORD).digest("hex") : "")
+    cfg.sessionSecret ||
+    (cfg.password ? crypto.createHash("sha256").update("ov|" + cfg.password).digest("hex") : "")
   );
 }
 
@@ -34,15 +36,17 @@ function unquote(v: string): string {
   return v;
 }
 
-// True when the owner credentials are present in the server environment.
+// True when the owner credentials are present (env or config file).
 export function ownerConfigured(): boolean {
-  return !!(process.env.OWNER_EMAIL && process.env.OWNER_PASSWORD);
+  const cfg = ownerConfig();
+  return !!(cfg.email && cfg.password);
 }
 
-// Validate the owner credentials against the environment (never hardcoded).
+// Validate the owner credentials (never hardcoded — env or config file).
 export function checkOwnerCredentials(email: string, password: string): boolean {
-  const OE = process.env.OWNER_EMAIL;
-  const OP = process.env.OWNER_PASSWORD;
+  const cfg = ownerConfig();
+  const OE = cfg.email;
+  const OP = cfg.password;
   if (!OE || !OP) return false;
   return (
     safeEqual(email.trim().toLowerCase(), unquote(OE).trim().toLowerCase()) &&

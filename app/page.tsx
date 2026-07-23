@@ -11,12 +11,14 @@ import { SpecialOffers } from "@/components/sections/special-offers";
 import { CollectionBanners } from "@/components/sections/collection-banners";
 import { TrustBadges } from "@/components/sections/trust-badges";
 import { NewsletterSection } from "@/components/sections/newsletter-section";
+import { PromoSuggestions } from "@/components/sections/promo-suggestions";
 
 export default function HomePage() {
   return (
     <>
       <HeroCarousel />
       <FeatureCards />
+      <PromoSuggestions />
       <ShopByCategory />
       <DealsRanking />
       <TrendingNow />

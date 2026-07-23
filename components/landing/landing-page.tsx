@@ -51,7 +51,7 @@ function Hero({ page }: { page: string }) {
   const textColor = s.text_color || "#ffffff";
 
   return (
-    <div className="relative rounded-[18px] overflow-hidden h-[240px] sm:h-[360px] lg:h-[420px] shadow-[0_18px_40px_rgba(16,24,40,.16)] bg-[#0f172a]">
+    <div className="relative rounded-[18px] overflow-hidden h-[170px] sm:h-[250px] lg:h-[300px] shadow-[0_18px_40px_rgba(16,24,40,.16)] bg-[#0f172a]">
       {img && <div className="absolute inset-0 bg-cover bg-center transition-opacity duration-500" style={{ backgroundImage: `url(${img})` }} />}
       <div className={cn("absolute inset-0", pos === "right" ? "bg-gradient-to-l from-black/70 via-black/40 to-transparent" : "bg-gradient-to-r from-black/70 via-black/40 to-transparent")} />
       <div className={cn("relative z-[2] h-full flex flex-col justify-center px-6 sm:px-10 lg:px-14 max-w-[85%] sm:max-w-[62%]", alignCls, pos === "right" && "ml-auto", pos === "center" && "mx-auto")}>

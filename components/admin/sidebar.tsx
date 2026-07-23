@@ -247,7 +247,7 @@ export function AdminSidebar({
         ))}
       </nav>
 
-      {/* View Storefront */}
+      {/* View Storefront + Owner Vault */}
       <div className={cn("px-3 pb-4 border-t", dark ? "border-[#252c36]" : "border-[#eef0f3]")}>
         <a
           href="/"
@@ -260,6 +260,19 @@ export function AdminSidebar({
         >
           <ExternalLink className="w-[18px] h-[18px]" />
           View Storefront
+        </a>
+        {/* Owner Vault — visible to admins, but only the owner can sign in
+            (separate email/password gate on /owner-vault). */}
+        <a
+          href="/owner-vault"
+          onClick={onCloseMobile}
+          className={cn(
+            "flex items-center gap-2 px-3 py-2.5 mt-1 rounded-[10px] text-sm font-semibold transition-colors",
+            dark ? "text-[#e7ebf0] hover:bg-white/5" : "text-[#16181d] hover:bg-black/5"
+          )}
+        >
+          <Lock className="w-[18px] h-[18px] text-[#f5c518]" />
+          Owner Vault
         </a>
       </div>
     </div>

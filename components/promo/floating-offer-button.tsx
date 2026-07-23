@@ -6,15 +6,24 @@ import { Sparkles, X, Check, Mail } from "lucide-react";
 const LS_KEY = "atlanta_offer_btn_pos";
 const SIZE = 60;
 const MARGIN = 12;
+const BOTTOM_RESERVE = 84; // keep clear of the bottom nav
 const DRAG_THRESHOLD = 6; // px moved before it counts as a drag (not a click)
 
 type Pos = { x: number; y: number };
 
+// Keep the button inside the safe area: below the sticky header and above the
+// bottom nav, so it can never cover the cart / search / tabs.
 function clampToViewport(p: Pos): Pos {
   if (typeof window === "undefined") return p;
+  const header = document.querySelector("header");
+  const headerH = header ? Math.round(header.getBoundingClientRect().height) : 180;
+  const minY = headerH + 8;
   const maxX = window.innerWidth - SIZE - MARGIN;
-  const maxY = window.innerHeight - SIZE - MARGIN;
-  return { x: Math.min(Math.max(MARGIN, p.x), maxX), y: Math.min(Math.max(MARGIN, p.y), maxY) };
+  const maxY = Math.max(minY, window.innerHeight - SIZE - BOTTOM_RESERVE);
+  return {
+    x: Math.min(Math.max(MARGIN, p.x), maxX),
+    y: Math.min(Math.max(minY, p.y), maxY),
+  };
 }
 
 export function FloatingOfferButton() {
@@ -89,7 +98,7 @@ export function FloatingOfferButton() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         style={{ left: pos.x, top: pos.y, width: SIZE, height: SIZE, touchAction: "none" }}
-        className="fixed z-[140] grid place-items-center rounded-full bg-[#f5c518] text-[#2563eb] shadow-[0_10px_24px_rgba(0,0,0,.28)] ring-2 ring-white/70 transition-transform active:scale-95 cursor-grab active:cursor-grabbing animate-[pulse_2.4s_ease-in-out_infinite]"
+        className="fixed z-[45] grid place-items-center rounded-full bg-[#f5c518] text-[#2563eb] shadow-[0_10px_24px_rgba(0,0,0,.28)] ring-2 ring-white/70 transition-transform active:scale-95 cursor-grab active:cursor-grabbing animate-[pulse_2.4s_ease-in-out_infinite]"
       >
         <Sparkles className="h-7 w-7" fill="currentColor" strokeWidth={1.5} />
       </button>

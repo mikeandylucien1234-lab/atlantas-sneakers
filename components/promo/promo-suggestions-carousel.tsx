@@ -186,20 +186,20 @@ export const SAMPLE_PROMO_CARDS: Omit<PromoCard, "onCtaClick">[] = [
   {
     id: "loyalty-points",
     imageUrl: "/images/promos/promo-1.png",
-    title: "Gana puntos con cada compra",
-    ctaLabel: "Unirme al programa de puntos",
+    title: "Earn points every time you shop",
+    ctaLabel: "Join Rewards",
   },
   {
     id: "pay-one-place",
     imageUrl: "/images/promos/promo-2.png",
-    title: "Paga todo en un solo lugar",
-    ctaLabel: "Ir a pagos",
+    title: "Pay all your accounts in one place",
+    ctaLabel: "Go to Payments",
   },
   {
     id: "premium-upgrade",
     imageUrl: "/images/promos/promo-3.png",
-    title: "Hazte Premium y gana más cada día",
-    ctaLabel: "Descubrir Premium",
+    title: "Upgrade to Premium",
+    ctaLabel: "Go Premium",
   },
 ];
 

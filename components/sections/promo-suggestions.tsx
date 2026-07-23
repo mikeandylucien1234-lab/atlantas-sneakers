@@ -5,9 +5,9 @@ import { PromoSuggestionsCarousel, SAMPLE_PROMO_CARDS } from "@/components/promo
 
 // Maps each sample promo to where its card should take the user.
 const LINKS: Record<string, string> = {
-  "loyalty-points": "/account",
-  "pay-one-place": "/checkout",
-  "premium-upgrade": "/account",
+  "loyalty-points": "/rewards",
+  "pay-one-place": "/pay",
+  "premium-upgrade": "/premium",
 };
 
 export function PromoSuggestions() {

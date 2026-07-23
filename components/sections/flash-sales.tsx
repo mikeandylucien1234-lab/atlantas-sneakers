@@ -13,12 +13,20 @@ function pad(n: number) { return String(n).padStart(2, "0"); }
 // Categories shown inside the "Explore Your Interests" card (photo + name).
 const IIMG = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=120&h=120&q=70`;
 const INTERESTS = [
+  { name: "Sneakers", slug: "sneakers", img: IIMG("1542291026-7eec264c27ff") },
   { name: "Men's Jewelry", slug: "accessories", img: IIMG("1611591437281-460bfbe1220a") },
   { name: "Sunglasses", slug: "sunglasses", img: IIMG("1572635196237-14b3f281503f") },
   { name: "Headphones", slug: "headphones", img: IIMG("1505740420928-5e560c06d30e") },
   { name: "Watches", slug: "watches", img: IIMG("1523275335684-37898b6baf30") },
   { name: "Hoodies", slug: "hoodies", img: IIMG("1556821840-3a63f95609a7") },
   { name: "Bags", slug: "bags", img: IIMG("1553062407-98eeb64c6a62") },
+  { name: "T-Shirts", slug: "t-shirts", img: IIMG("1521572163474-6864f9cf17ab") },
+  { name: "Jeans", slug: "jeans", img: IIMG("1542272604-787c3835535d") },
+  { name: "Jackets", slug: "jackets", img: IIMG("1551028719-00167b16eac5") },
+  { name: "Backpacks", slug: "backpacks", img: IIMG("1553062407-98eeb64c6a62") },
+  { name: "Caps", slug: "caps", img: IIMG("1588850561407-ed78c282e89b") },
+  { name: "Belts", slug: "belts", img: IIMG("1624222247344-550fb60583dc") },
+  { name: "Sportswear", slug: "sportswear", img: IIMG("1517466787929-bc90951d0974") },
 ];
 
 // FLASH SALE — the main promotional event section. Its header (image, title,

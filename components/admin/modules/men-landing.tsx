@@ -13,6 +13,12 @@ import {
 type Props = { dark: boolean; page?: string };
 const EXT = { "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp" };
 
+// Beauty "Shop by Category" tabs — each tile row is grouped by these.
+const BEAUTY_CAT_TABS = [
+  { id: "category", label: "Category" }, { id: "makeup", label: "Makeup" }, { id: "tools", label: "Tools" },
+  { id: "nails", label: "Nails" }, { id: "hair", label: "Hair" }, { id: "personalCare", label: "Personal Care" },
+];
+
 const SECTION_LABELS = {
   hero: "Hero Banner", collections: "Collections", shop_category: "Shop by Category",
   new_arrivals: "New Arrivals", flash_sale: "Flash Sale", super_deals: "Super Deals",
@@ -114,7 +120,7 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
       {tab === "hero" && <HeroEditor {...shared} />}
       {tab === "ages" && <AgeEditor {...shared} />}
       {tab === "collections" && <ListEditor {...shared} table="men_collections" prefix="collections" title="Collections" imageField="image_url" imageLabel="Image" hasCategory={false} />}
-      {tab === "shop_category" && <ListEditor {...shared} table="men_shop_categories" prefix="shop-category" title="Shop by Category" imageField="image_url" imageLabel="Image (round)" round hasCategory />}
+      {tab === "shop_category" && <ListEditor {...shared} table="men_shop_categories" prefix="shop-category" title="Shop by Category" imageField="image_url" imageLabel="Image (round)" round hasCategory groups={isBeauty ? BEAUTY_CAT_TABS : undefined} />}
       {tab === "style" && <ListEditor {...shared} table="landing_style_looks" section={styleSection} prefix="style" title={isKids ? "Seasonal Collections" : "Style Inspiration"} imageField="image_url" imageLabel="Image" hasSubtitle />}
       {tab === "essentials" && <ListEditor {...shared} table="landing_style_looks" section="essentials" prefix="essentials" title="Kids Essentials" imageField="image_url" imageLabel="Image" />}
       {tab === "bundles" && <ListEditor {...shared} table="landing_style_looks" section="bundle" prefix="bundle" title="Beauty Bundles" imageField="image_url" imageLabel="Image" hasSubtitle />}
@@ -127,7 +133,7 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
 }
 
 /* ============ Generic list editor ============ */
-function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, prefix, title, imageField, imageLabel, round, hasCategory, hasBrand, hasSubtitle, section }) {
+function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, prefix, title, imageField, imageLabel, round, hasCategory, hasBrand, hasSubtitle, section, groups }) {
   const { p, brd, txt, sub, hover, inpCls, labelCls, cardCls, btnGhost, btnPrimary, divide } = styles;
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -137,12 +143,14 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
+  const [group, setGroup] = useState(groups?.[0]?.id || null);
 
   const load = useCallback(async () => {
     try {
       const sel = hasCategory ? "*, category:categories(name)" : hasBrand ? "*, brand:brands(name)" : "*";
       let q0 = sb().from(table).select(sel).eq("page", page);
       if (section) q0 = q0.eq("section", section);
+      if (groups && group) q0 = q0.eq("tab", group);
       const reqs = [q0.order("sort_order")];
       if (hasCategory) reqs.push(sb().from("categories").select("id,name").order("name"));
       if (hasBrand) reqs.push(sb().from("brands").select("id,name").order("name"));
@@ -151,7 +159,7 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
       if (hasCategory) setCats(res[1].data || []);
       if (hasBrand) setBrands(res[1].data || []);
     } catch (e) { showToast(e.message, "error"); } finally { setLoading(false); }
-  }, [table, page, section, hasCategory, hasBrand, showToast]);
+  }, [table, page, section, group, groups, hasCategory, hasBrand, showToast]);
   useEffect(() => { load(); }, [load]);
 
   const empty = () => ({ _new: true, name: "", subtitle: "", [imageField]: "", link_url: "", sort_order: rows.length + 1, is_active: true, linked_category_id: "", linked_brand_id: "" });
@@ -164,6 +172,7 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
       const supabase = await authed();
       const payload = { page, name: d.name, [imageField]: d[imageField] || null, link_url: d.link_url || null, sort_order: Number(d.sort_order) || 100, is_active: !!d.is_active };
       if (section) payload.section = section;
+      if (groups && group) payload.tab = group;
       if (hasSubtitle) payload.subtitle = d.subtitle || null;
       if (hasCategory) payload.linked_category_id = d.linked_category_id || null;
       if (hasBrand) payload.linked_brand_id = d.linked_brand_id || null;
@@ -182,8 +191,15 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
 
   return (
     <div className="space-y-4">
+      {groups && (
+        <div className="flex flex-wrap gap-1.5">
+          {groups.map((g) => (
+            <button key={g.id} onClick={() => { setGroup(g.id); setLoading(true); }} className={cn("h-8 px-3 rounded-[9px] text-xs font-bold transition-colors", group === g.id ? "bg-[#2563eb] text-white" : cn(btnGhost))}>{g.label}</button>
+          ))}
+        </div>
+      )}
       <div className="flex items-center justify-between">
-        <p className={cn("text-sm font-bold", txt)}>{title} <span className={cn("font-normal", sub)}>· {rows.length} item(s)</span></p>
+        <p className={cn("text-sm font-bold", txt)}>{title}{groups ? ` · ${groups.find((g) => g.id === group)?.label}` : ""} <span className={cn("font-normal", sub)}>· {rows.length} item(s)</span></p>
         <button onClick={() => setDrawer(empty())} className={btnPrimary}><Plus className="w-3.5 h-3.5" /> Add</button>
       </div>
       <div className={cn(cardCls, "overflow-hidden")}>

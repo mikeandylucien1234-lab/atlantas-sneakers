@@ -270,6 +270,15 @@ export async function getLandingShopCategories(page: string) {
   return data || [];
 }
 
+// Tabbed shop-by-category (Beauty): rows carry a `tab` group. Ordered for grouping.
+export async function getShopCategoryTabs(page: string) {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("men_shop_categories").select("*, category:categories(slug)")
+    .eq("page", page).eq("is_active", true).order("tab").order("sort_order");
+  return data || [];
+}
+
 export async function getLandingBrands(page: string) {
   const supabase = createClient();
   const { data } = await supabase

@@ -50,7 +50,7 @@ export function ShopByCategory() {
             href={t.href}
             target={t.newTab ? "_blank" : undefined}
             rel={t.newTab ? "noopener noreferrer" : undefined}
-            className="flex flex-col items-center gap-2 group snap-start"
+            className="flex flex-col items-center gap-2 group snap-start min-w-0 w-[70px] sm:w-[104px] mx-auto"
           >
             <div
               className={`w-[70px] sm:w-[104px] aspect-square overflow-hidden ring-1 ring-black/[.04] transition-transform duration-200 group-hover:-translate-y-1.5 group-hover:shadow-[0_16px_34px_rgba(16,24,40,.16)] ${radiusCls(t.radius)}`}
@@ -61,7 +61,7 @@ export function ShopByCategory() {
                 <img src={t.image_url} alt={t.alt} loading="lazy" className="w-full h-full object-cover" />
               )}
             </div>
-            <span className="text-[12px] sm:text-[14px] font-semibold text-[#16181d] text-center whitespace-nowrap">{t.name}</span>
+            <span className="w-full text-[12px] sm:text-[13px] leading-tight font-semibold text-[#16181d] text-center line-clamp-2 break-words">{t.name}</span>
           </Link>
         ))}
       </div>

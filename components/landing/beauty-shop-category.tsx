@@ -3,68 +3,78 @@
 import { useState } from "react";
 import Link from "next/link";
 
-/* Curated beauty image pool (Unsplash) — cycled so every tile has quality art. */
+/* Topical beauty images (Unsplash IDs already used across the site → known to
+   load) mapped per sub-category so each tile is relevant, SHEIN-style. */
 const IMG = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=200&h=200&q=70`;
-const POOL = [
-  "1522335789203-aabd1fc54bc9", "1596462502278-27bfdc403348", "1512496015851-a90fb38ba796",
-  "1583001931096-959e9a1a6223", "1604654894610-df63bc536371", "1595475207225-428b62bda831",
-  "1522338242992-e1a54906a8da", "1556228578-8c89e6adf883", "1570172619644-dfd03ed5d881",
-  "1541643600914-78b084683601", "1596704017254-9b121068fb31", "1584308666744-24d5c474f2ae",
-  "1512207736890-6ffed8a84e8d", "1608248543803-ba4f8c70ae0b", "1487412947147-5cebf100ffc2",
-];
-const pic = (i: number) => IMG(POOL[i % POOL.length]);
+const I = {
+  makeup: "1522335789203-aabd1fc54bc9", makeup2: "1596462502278-27bfdc403348", makeup3: "1512496015851-a90fb38ba796",
+  face: "1570172619644-dfd03ed5d881", lashes: "1583001931096-959e9a1a6223", lips: "1586495777744-4413f21062fa",
+  brushes: "1596704017254-9b121068fb31", tools: "1512207736890-6ffed8a84e8d",
+  nails: "1604654894610-df63bc536371", nails2: "1519014816548-bf5fe059798b",
+  wig: "1595475207225-428b62bda831", hair: "1522338242992-e1a54906a8da", hair2: "1560869713-7d0a29430803",
+  skincare: "1556228578-8c89e6adf883", body: "1608248543803-ba4f8c70ae0b", spa: "1600334129128-685c5582fd35",
+  perfume: "1541643600914-78b084683601", oils: "1608571423902-eed4a5ad8108",
+  supplements: "1584308666744-24d5c474f2ae", gift: "1549465220-1a8b9238cd48",
+  accessories: "1611591437281-460bfbe1220a", men: "1621607512214-68297480165e",
+};
 
 type Cat = { name: string; img: string; href: string };
-const make = (names: string[]): Cat[] =>
-  names.map((name, i) => ({ name, img: pic(i), href: "/category/beauty" }));
+const make = (pairs: [string, string][]): Cat[] =>
+  pairs.map(([name, id]) => ({ name, img: IMG(id), href: "/category/beauty" }));
 
 // One reusable data structure — add/adjust categories here, the UI adapts.
 const beautyCategories: Record<string, { label: string; items: Cat[] }> = {
   category: {
     label: "Category",
     items: make([
-      "Makeup", "Beauty Tools", "Nail, Hand & Foot Care", "Eyelashes", "Press on Nails",
-      "Wigs & Accessories", "Personal Care", "Fragrances & Aromatherapy",
-      "Personal Care Appliance", "Health Care", "Dietary Supplements",
+      ["Makeup", I.makeup], ["Beauty Tools", I.brushes], ["Nail, Hand & Foot Care", I.nails],
+      ["Eyelashes", I.lashes], ["Press on Nails", I.nails2], ["Wigs & Accessories", I.wig],
+      ["Personal Care", I.skincare], ["Fragrances & Aromatherapy", I.perfume],
+      ["Personal Care Appliance", I.tools], ["Health Care", I.supplements], ["Dietary Supplements", I.supplements],
     ]),
   },
   makeup: {
     label: "Makeup",
     items: make([
-      "Face Make Up", "Eye Make Up", "Lips", "Eyelashes", "Blush & Contour", "Eyebrows",
-      "Body Make Up", "Makeup Brushes", "Makeup Puffs & Sponges", "Makeup Bag & Storage", "Makeup Remover",
+      ["Face Make Up", I.makeup], ["Eye Make Up", I.face], ["Lips", I.lips], ["Eyelashes", I.lashes],
+      ["Blush & Contour", I.makeup2], ["Eyebrows", I.face], ["Body Make Up", I.makeup3],
+      ["Makeup Brushes", I.brushes], ["Makeup Puffs & Sponges", I.makeup2], ["Makeup Bag & Storage", I.gift],
+      ["Makeup Remover", I.skincare],
     ]),
   },
   tools: {
     label: "Tools",
     items: make([
-      "Makeup Tools", "Nail Art Tools", "Hair Tools", "Skin Care Tools", "Eye Tools",
-      "Body Care Tools", "Oral & Nose Tools", "Eyelashes Tools", "Tattoos & Body Art",
-      "Refillable Containers", "Mirrors",
+      ["Makeup Tools", I.brushes], ["Nail Art Tools", I.nails2], ["Hair Tools", I.hair],
+      ["Skin Care Tools", I.skincare], ["Eye Tools", I.face], ["Body Care Tools", I.body],
+      ["Oral & Nose Tools", I.tools], ["Eyelashes Tools", I.lashes], ["Tattoos & Body Art", I.accessories],
+      ["Refillable Containers", I.oils], ["Mirrors", I.gift],
     ]),
   },
   nails: {
     label: "Nails",
     items: make([
-      "Press on Nails", "Gel Nail Polish", "Nail Art Accessories", "Rhinestones & Decorations",
-      "Nail Art Equipments", "Nail Art Salon Sets", "Nail Art Stickers & Decals",
-      "Hand, Foot & Nail Tools", "Nail Glue & Adhesive", "Nail Powder & Liquids", "Nail Polish Removers",
+      ["Press on Nails", I.nails2], ["Gel Nail Polish", I.nails], ["Nail Art Accessories", I.nails2],
+      ["Rhinestones & Decorations", I.accessories], ["Nail Art Equipments", I.tools], ["Nail Art Salon Sets", I.nails],
+      ["Nail Art Stickers & Decals", I.nails2], ["Hand, Foot & Nail Tools", I.brushes],
+      ["Nail Glue & Adhesive", I.nails], ["Nail Powder & Liquids", I.nails2], ["Nail Polish Removers", I.skincare],
     ]),
   },
   hair: {
     label: "Hair",
     items: make([
-      "Synthetic Hair Wigs", "Human Hair Wigs", "Wig Caps & Tools", "Hair Care & Styling",
-      "Hair Styling Care Appliances", "Combs", "Styling Tools", "Hair Tools",
-      "Hair Treatment", "Hair Removal Tools", "Hair Cap",
+      ["Synthetic Hair Wigs", I.wig], ["Human Hair Wigs", I.hair2], ["Wig Caps & Tools", I.wig],
+      ["Hair Care & Styling", I.hair], ["Hair Styling Care Appliances", I.tools], ["Combs", I.brushes],
+      ["Styling Tools", I.tools], ["Hair Tools", I.hair], ["Hair Treatment", I.oils],
+      ["Hair Removal Tools", I.tools], ["Hair Cap", I.wig],
     ]),
   },
   personalCare: {
     label: "Personal Care",
     items: make([
-      "Skin Care", "Body Care", "Lip Care", "Personal Care Appliance", "Oral & Nose Care",
-      "Massage & Relaxation", "Health Care", "Facial Masks", "Bath & Shower",
-      "Men Grooming", "Shaving & Hair Removal",
+      ["Skin Care", I.skincare], ["Body Care", I.body], ["Lip Care", I.lips], ["Personal Care Appliance", I.tools],
+      ["Oral & Nose Care", I.spa], ["Massage & Relaxation", I.spa], ["Health Care", I.supplements],
+      ["Facial Masks", I.face], ["Bath & Shower", I.body], ["Men Grooming", I.men], ["Shaving & Hair Removal", I.men],
     ]),
   },
 };

@@ -115,7 +115,7 @@ export function BeautyShopByCategory() {
 
   return (
     <div>
-      <h2 className="mb-3 text-[19px] sm:text-[21px] font-extrabold tracking-[-.01em] text-[#16181d]">SHOP BY CATEGORY</h2>
+      <h2 className="mb-3 text-[19px] sm:text-[20px] lg:text-[21px] font-extrabold tracking-[-.01em] text-[#16181d]">SHOP BY CATEGORY</h2>
 
       {/* Tabs */}
       <div className="mb-4 flex items-center gap-5 overflow-x-auto border-b border-[#eef0f3] pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

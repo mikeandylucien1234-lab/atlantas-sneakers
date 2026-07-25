@@ -120,7 +120,7 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
       {tab === "hero" && <HeroEditor {...shared} />}
       {tab === "ages" && <AgeEditor {...shared} />}
       {tab === "collections" && <ListEditor {...shared} table="men_collections" prefix="collections" title="Collections" imageField="image_url" imageLabel="Image" hasCategory={false} />}
-      {tab === "shop_category" && <ListEditor {...shared} table="men_shop_categories" prefix="shop-category" title="Shop by Category" imageField="image_url" imageLabel="Image (round)" round hasCategory groups={isBeauty ? BEAUTY_CAT_TABS : undefined} />}
+      {tab === "shop_category" && <ListEditor {...shared} table="men_shop_categories" prefix="shop-category" title="Shop by Category" imageField="image_url" imageLabel="Image (round)" round hasCategory seo groups={isBeauty ? BEAUTY_CAT_TABS : undefined} />}
       {tab === "style" && <ListEditor {...shared} table="landing_style_looks" section={styleSection} prefix="style" title={isKids ? "Seasonal Collections" : "Style Inspiration"} imageField="image_url" imageLabel="Image" hasSubtitle />}
       {tab === "essentials" && <ListEditor {...shared} table="landing_style_looks" section="essentials" prefix="essentials" title="Kids Essentials" imageField="image_url" imageLabel="Image" />}
       {tab === "bundles" && <ListEditor {...shared} table="landing_style_looks" section="bundle" prefix="bundle" title="Beauty Bundles" imageField="image_url" imageLabel="Image" hasSubtitle />}
@@ -133,7 +133,7 @@ export function AdminMenLanding({ dark, page = "men" }: Props) {
 }
 
 /* ============ Generic list editor ============ */
-function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, prefix, title, imageField, imageLabel, round, hasCategory, hasBrand, hasSubtitle, section, groups }) {
+function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, prefix, title, imageField, imageLabel, round, hasCategory, hasBrand, hasSubtitle, section, groups, seo }) {
   const { p, brd, txt, sub, hover, inpCls, labelCls, cardCls, btnGhost, btnPrimary, divide } = styles;
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -162,7 +162,7 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
   }, [table, page, section, group, groups, hasCategory, hasBrand, showToast]);
   useEffect(() => { load(); }, [load]);
 
-  const empty = () => ({ _new: true, name: "", subtitle: "", [imageField]: "", link_url: "", sort_order: rows.length + 1, is_active: true, linked_category_id: "", linked_brand_id: "" });
+  const empty = () => ({ _new: true, name: "", subtitle: "", [imageField]: "", link_url: "", sort_order: rows.length + 1, is_active: true, linked_category_id: "", linked_brand_id: "", alt_text: "", seo_title: "", seo_description: "" });
 
   const save = async () => {
     const d = drawer;
@@ -173,6 +173,7 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
       const payload = { page, name: d.name, [imageField]: d[imageField] || null, link_url: d.link_url || null, sort_order: Number(d.sort_order) || 100, is_active: !!d.is_active };
       if (section) payload.section = section;
       if (groups && group) payload.tab = group;
+      if (seo) { payload.alt_text = d.alt_text || null; payload.seo_title = d.seo_title || null; payload.seo_description = d.seo_description || null; }
       if (hasSubtitle) payload.subtitle = d.subtitle || null;
       if (hasCategory) payload.linked_category_id = d.linked_category_id || null;
       if (hasBrand) payload.linked_brand_id = d.linked_brand_id || null;
@@ -246,6 +247,13 @@ function ListEditor({ styles, authed, sb, showToast, uploadImage, page, table, p
               <div><label className={labelCls}>Order</label><input type="number" value={drawer.sort_order} onChange={(e) => setDrawer((d) => ({ ...d, sort_order: e.target.value }))} className={inpCls} /></div>
               <div><label className={labelCls}>Status</label><select value={drawer.is_active ? "1" : "0"} onChange={(e) => setDrawer((d) => ({ ...d, is_active: e.target.value === "1" }))} className={inpCls}><option value="1">Active</option><option value="0">Hidden</option></select></div>
             </div>
+            {seo && (
+              <div className="space-y-3 rounded-[12px] border border-dashed p-3" style={{ borderColor: "currentColor", opacity: 0.9 }}>
+                <div><label className={labelCls}>Alt Text (accessibility)</label><input value={drawer.alt_text || ""} onChange={(e) => setDrawer((d) => ({ ...d, alt_text: e.target.value }))} className={inpCls} placeholder={drawer.name || "e.g. Red dress"} /></div>
+                <div><label className={labelCls}>SEO Title (optional)</label><input value={drawer.seo_title || ""} onChange={(e) => setDrawer((d) => ({ ...d, seo_title: e.target.value }))} className={inpCls} /></div>
+                <div><label className={labelCls}>SEO Description (optional)</label><textarea value={drawer.seo_description || ""} onChange={(e) => setDrawer((d) => ({ ...d, seo_description: e.target.value }))} className={cn(inpCls, "h-16 py-2 resize-none")} /></div>
+              </div>
+            )}
             <button onClick={save} disabled={busy || !drawer.name} className={cn(btnPrimary, "w-full justify-center h-10")}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save</button>
           </div>
         </div>

@@ -11,6 +11,7 @@ import { ProductCard } from "@/components/ui/product-card";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
 import { NewsletterSection } from "@/components/sections/newsletter-section";
 import { BeautyShopByCategory } from "@/components/landing/beauty-shop-category";
+import { CurveShopByCategory } from "@/components/landing/curve-shop-category";
 import {
   getLandingSettings, getLandingHeroBanners, getLandingCollections, getLandingShopCategories,
   getLandingBrands, getLandingStyleLooks, getLandingProducts, getLandingFlashDeals, getProductsByIds,
@@ -540,7 +541,7 @@ export function LandingPage({ page }: { page: string }) {
       case "ship_today": return <QuickShipGrid title="EXPÉDIÉ AUJOURD'HUI" variant="new" limit={8} maxHours={24} />;
       case "why_quickship": return <WhyQuickShip />;
       case "collections": return <Collections page={page} />;
-      case "shop_category": return page === "beauty" ? <BeautyShopByCategory /> : <ShopCategory page={page} />;
+      case "shop_category": return page === "beauty" ? <BeautyShopByCategory /> : page === "curve" ? <CurveShopByCategory /> : <ShopCategory page={page} />;
       case "new_arrivals": return isQuick
         ? <QuickShipGrid title="NEW ARRIVALS" variant="new" limit={naCount} maxHours={qh} />
         : <ProductGrid page={page} title="NEW ARRIVALS" href="/new-arrivals" variant="new" limit={naCount} ageCategoryId={ageCat} />;

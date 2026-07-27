@@ -53,7 +53,7 @@ export function FlashSales() {
   const title = banner?.name || "FLASH SALES";
   const subtitle = banner?.description || "Limited time deals. Grab them before they're gone!";
   const ctaLabel = banner?.cta_label || "SHOP ALL DEALS";
-  const ctaHref = banner?.link_url || "/deals";
+  const ctaHref = banner?.link_url || "/flash-sale";
   const accent = banner?.cta_color || "#ef4444";
 
   // Countdown target = banner end date, else tonight's midnight.

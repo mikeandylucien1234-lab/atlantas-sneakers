@@ -208,7 +208,7 @@ function FlashSale({ page, accent }: { page: string; accent: string }) {
           {[["H", h], ["M", m], ["S", s]].map(([lab, v]) => (
             <div key={lab as string} className="text-center"><div className="rounded-[8px] min-w-[38px] py-1.5 text-[16px] font-extrabold text-white tabular-nums" style={{ background: accent }}>{pad(v as number)}</div></div>
           ))}
-          <Link href="/deals" className="ml-1 text-[12px] font-bold text-[#2563eb] hover:underline flex items-center gap-1">View all <ArrowRight className="w-3.5 h-3.5" /></Link>
+          <Link href="/flash-sale" className="ml-1 text-[12px] font-bold text-[#2563eb] hover:underline flex items-center gap-1">View all <ArrowRight className="w-3.5 h-3.5" /></Link>
         </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -234,7 +234,7 @@ function SuperDeals({ page, limit, ageCategoryId }: { page: string; limit: numbe
   if (!loading && !items.length) return null;
   return (
     <div className="rounded-[18px] p-4 sm:p-5 bg-[linear-gradient(120deg,#eef4ff,#dbe7ff)]">
-      <SectionHead title="SUPER DEALS" href="/deals" />
+      <SectionHead title="SUPER DEALS" href="/super-deals" />
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={i} />)

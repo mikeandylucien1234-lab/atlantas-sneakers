@@ -71,7 +71,7 @@ export function DealsRanking() {
 
   return (
     <div className="mt-9 grid grid-cols-2 gap-3">
-      <Column title="Super Deals" href="/deals" items={superItems} />
+      <Column title="Super Deals" href="/super-deals" items={superItems} />
       <Column title="Top Ranking Items" href="/best-sellers" items={rankingItems} />
     </div>
   );

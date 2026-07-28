@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
+import { bazikConfig } from "@/lib/payments/bazik-config";
 
 export const runtime = "nodejs";
 
@@ -7,7 +8,7 @@ export const runtime = "nodejs";
 // against the webhook signing secret (header name/scheme may vary — see note).
 export async function POST(request: NextRequest) {
   const raw = await request.text();
-  const secret = process.env.BAZIK_WEBHOOK_SECRET;
+  const secret = bazikConfig().webhookSecret;
 
   if (secret) {
     const sig =

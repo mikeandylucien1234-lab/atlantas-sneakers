@@ -46,3 +46,8 @@ owner-vault.config.json
 .owner-vault.json
 ownervault.config.json
 .ownervault.json
+
+# Bazik local credentials (never commit)
+bazik.config.json
+bazikconfig.json
+.bazik.json

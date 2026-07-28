@@ -112,6 +112,9 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
     category_id: categoryId || null, brand_id: overrides.brand_id || null,
     status: overrides.status || "draft", is_featured: !!overrides.is_featured, is_new: overrides.is_new !== false,
     is_trending: !!overrides.is_trending, is_best_seller: !!overrides.is_best_seller,
+    is_quickship: !!overrides.is_quickship,
+    local_stock: overrides.local_stock != null ? Number(overrides.local_stock) : null,
+    delivery_hours: overrides.delivery_hours != null ? Number(overrides.delivery_hours) : null,
     tags: overrides.tags || null, meta_title: overrides.meta_title || name, meta_description: metaDesc,
   }).select("id").single();
   if (error) return { ok: false, error: error.message };

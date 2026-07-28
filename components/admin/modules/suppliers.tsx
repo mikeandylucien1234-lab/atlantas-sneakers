@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import {
   Boxes, LayoutDashboard, Store, Plug, Search, PackageSearch, ListChecks,
   ShoppingCart, Warehouse, DollarSign, Truck, FolderTree, ScrollText, Activity,
@@ -18,7 +19,18 @@ const NAV = [
   ["inventory", "Inventory Sync", Warehouse], ["pricing", "Pricing Rules", DollarSign], ["categories", "Categories Mapping", FolderTree],
   ["logs", "Logs", ScrollText], ["monitor", "API Monitor", Activity],
 ];
-const WIZARD_STEPS = ["Information", "Images", "Variants", "Pricing", "SEO", "Shipping", "Inventory", "Marketplace", "Review", "Publish"];
+const WIZARD_STEPS = ["Information", "Images", "Variants", "Pricing", "SEO", "Shipping", "Inventory", "Classification", "Review", "Publish"];
+const PAGE_ORDER = ["women", "men", "kids", "curve", "quickship", "beauty", "home"];
+// Marketing sections → underlying product flag/tag. Fully data-agnostic on the storefront.
+const MARKETING = [
+  { key: "is_new", label: "New Arrivals" },
+  { key: "is_best_seller", label: "Best Sellers" },
+  { key: "is_trending", label: "Trending Now" },
+  { key: "is_featured", label: "Top Ranking Items" },
+  { key: "super_deal", label: "Super Deal" },
+  { key: "flash_sale", label: "Flash Sale" },
+  { key: "flash_deals", label: "Flash Deals" },
+];
 
 function fmtDT(d) { return d ? new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; }
 function timeAgo(d) { if (!d) return "never"; const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000); if (s < 60) return `${s}s ago`; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return `${Math.floor(s / 86400)}d ago`; }
@@ -58,6 +70,44 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   const [logs, setLogs] = useState({ logs: [], total: 0, page: 1 });
   const [monitor, setMonitor] = useState(null);
   const [secretModal, setSecretModal] = useState(null);
+  // Classification data (all loaded from DB — nothing hardcoded)
+  const [classify, setClassify] = useState({ pages: [], cats: [], subcats: [], collections: [] });
+  const [subSearch, setSubSearch] = useState("");
+  const [beautyTab, setBeautyTab] = useState("");
+
+  // Load the pages (from men_page_settings) + real categories once.
+  useEffect(() => {
+    const sb = createClient();
+    (async () => {
+      try {
+        const [{ data: settings }, { data: categories }] = await Promise.all([
+          sb.from("men_page_settings").select("id, seo_slug"),
+          sb.from("categories").select("id, slug, name"),
+        ]);
+        const pages = (settings || []).sort((a, b) => {
+          const ia = PAGE_ORDER.indexOf(a.id), ib = PAGE_ORDER.indexOf(b.id);
+          return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        });
+        setClassify(c => ({ ...c, pages, cats: categories || [] }));
+      } catch {}
+    })();
+  }, []);
+
+  // When a main category is picked, load its sub-categories + collections live.
+  useEffect(() => {
+    const pg = wizard?.page; setSubSearch(""); setBeautyTab("");
+    if (!pg) { setClassify(c => ({ ...c, subcats: [], collections: [] })); return; }
+    const sb = createClient();
+    (async () => {
+      try {
+        const [{ data: sc }, { data: col }] = await Promise.all([
+          sb.from("men_shop_categories").select("id, name, tab, linked_category_id, category:categories(slug)").eq("page", pg).eq("is_active", true).order("tab").order("sort_order"),
+          sb.from("men_collections").select("id, name").eq("page", pg).eq("is_active", true).order("sort_order"),
+        ]);
+        setClassify(c => ({ ...c, subcats: sc || [], collections: col || [] }));
+      } catch {}
+    })();
+  }, [wizard?.page]);
 
   const showToast = useCallback((m, type = "success") => { setToast({ m, type }); setTimeout(() => setToast(null), 3200); }, []);
   const api = useCallback(async (path, opts) => {
@@ -99,12 +149,30 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   const openWizard = async (external_id) => {
     setWizStep(0); setWizard({ loading: true });
     try { const r = await sapi(`/product?id=${external_id}`); if (!r.ok && !r.product) { showToast(r.message || "Cannot load product", "error"); setWizard(null); return; }
-      const pr = r.product; setWizard({ external_id, name: pr.name, slug: "", description: pr.description || pr.name, category_id: "", brand_id: "", tags: "", price: null, compare_price: null, supplier_price: pr.supplier_price, images: pr.images || (pr.main_image ? [pr.main_image] : []), meta_title: pr.name, meta_description: (pr.description || "").slice(0, 160), is_featured: false, is_new: true, is_trending: false, is_best_seller: false, flash_sale: false, status: "draft", variants: pr.variants || [], detail: pr }); }
+      const pr = r.product; setWizard({ external_id, name: pr.name, slug: "", description: pr.description || pr.name, category_id: "", brand_id: "", tags: "", price: null, compare_price: null, supplier_price: pr.supplier_price, images: pr.images || (pr.main_image ? [pr.main_image] : []), meta_title: pr.name, meta_description: (pr.description || "").slice(0, 160), is_featured: false, is_new: true, is_trending: false, is_best_seller: false, flash_sale: false, super_deal: false, flash_deals: false, page: "", subcat: "", collections: [], status: "draft", variants: pr.variants || [], detail: pr }); }
     catch (e) { showToast(e.message, "error"); setWizard(null); }
   };
   const publish = async () => {
     const w = wizard;
-    const overrides = { name: w.name, slug: w.slug || undefined, description: w.description, category_id: w.category_id || undefined, brand_id: w.brand_id || undefined, tags: w.tags ? w.tags.split(",").map(x => x.trim()) : undefined, price: w.price ?? undefined, compare_price: w.compare_price ?? undefined, supplier_price: w.supplier_price, images: w.images, meta_title: w.meta_title, meta_description: w.meta_description, is_featured: w.is_featured, is_new: w.is_new, is_trending: w.is_trending, is_best_seller: w.is_best_seller, flash_sale: w.flash_sale, status: w.status, variants: w.variants, detail: w.detail };
+    // Resolve the real category id: chosen sub-category's linked category wins,
+    // else the page's own top-level category (slug === page id).
+    const sc = classify.subcats.find(s => s.id === w.subcat);
+    const pageCat = classify.cats.find(c => c.slug === w.page);
+    const categoryId = w.category_id || sc?.linked_category_id || pageCat?.id || undefined;
+    // Merge tags: manual tags + selected sub-category + collections + super-deal marker.
+    const collNames = (w.collections || []).map(id => (classify.collections.find(c => c.id === id)?.name)).filter(Boolean);
+    const tags = [
+      ...(w.tags ? w.tags.split(",").map(x => x.trim()) : []),
+      ...(sc ? [sc.name] : []),
+      ...collNames,
+      ...(w.super_deal ? ["super-deal"] : []),
+    ].filter(Boolean);
+    const isQuick = w.page === "quickship";
+    const totalStock = (w.variants || []).reduce((a, v) => a + (v.stock || 0), 0);
+    const overrides = { name: w.name, slug: w.slug || undefined, description: w.description, category_id: categoryId, brand_id: w.brand_id || undefined, tags: tags.length ? tags : undefined, price: w.price ?? undefined, compare_price: w.compare_price ?? undefined, supplier_price: w.supplier_price, images: w.images, meta_title: w.meta_title, meta_description: w.meta_description,
+      is_featured: !!w.is_featured, is_new: !!w.is_new, is_trending: !!w.is_trending, is_best_seller: !!w.is_best_seller, flash_sale: !!(w.flash_sale || w.flash_deals),
+      is_quickship: isQuick, local_stock: isQuick ? (totalStock || 20) : undefined, delivery_hours: isQuick ? 48 : undefined,
+      status: w.status, variants: w.variants, detail: w.detail };
     await post("/import", { external_id: w.external_id, overrides }, (r) => `Imported → product created`, () => { setWizard(null); loadDash(); });
   };
 
@@ -374,21 +442,87 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
               {wizStep === 4 && <div className="space-y-3"><div><label className={labelCls}>Meta Title</label><input value={wizard.meta_title} onChange={e => setWizard(w => ({ ...w, meta_title: e.target.value }))} className={inpCls} /></div><div><label className={labelCls}>Meta Description</label><textarea rows={3} value={wizard.meta_description} onChange={e => setWizard(w => ({ ...w, meta_description: e.target.value }))} className={cn("w-full rounded-[11px] border-[1.5px] px-3 py-2 text-sm", inpBg, "focus:border-[#2563eb]")} /></div><div><label className={labelCls}>Tags (comma)</label><input value={wizard.tags} onChange={e => setWizard(w => ({ ...w, tags: e.target.value }))} className={inpCls} placeholder="sneakers, running" /></div></div>}
               {wizStep === 5 && <div className={cn("rounded-[10px] border p-4", brd)}><p className={cn("text-sm font-bold", txt)}>Shipping</p><p className={cn("text-xs mt-1", sub)}>Processing time: {wizard.detail?.processing_time || "—"}. Shipping methods & costs sync from the supplier and can be refined in Shipping Rules. Weight: {wizard.detail?.weight || "—"}.</p></div>}
               {wizStep === 6 && <div className={cn("rounded-[10px] border p-4", brd)}><p className={cn("text-sm font-bold", txt)}>Inventory</p><p className={cn("text-xs mt-1", sub)}>Stock is imported from variants and kept in sync via the Inventory engine. Total stock: {wizard.variants.reduce((a, v) => a + (v.stock || 0), 0)}.</p></div>}
-              {wizStep === 7 && <div className="space-y-3">
-                <div>
-                  <label className={labelCls}>Show this product in these sections</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[["is_new", "New Arrivals"], ["is_trending", "Trending Now"], ["is_best_seller", "Best Sellers"], ["flash_sale", "Flash Sales"], ["is_featured", "Featured"]].map(([k, l]) => (
-                      <label key={k} className={cn("flex items-center gap-2 cursor-pointer rounded-[10px] border px-3 py-2", brd, wizard[k] ? "border-[#2563eb]" : "")}>
-                        <input type="checkbox" checked={!!wizard[k]} onChange={e => setWizard(w => ({ ...w, [k]: e.target.checked }))} className="rounded" />
-                        <span className={cn("text-sm font-semibold", txt)}>{l}</span>
-                      </label>
-                    ))}
+              {wizStep === 7 && (() => {
+                const beautyTabs = wizard.page === "beauty" ? [...new Set(classify.subcats.map(s => s.tab).filter(Boolean))] : [];
+                const subList = classify.subcats
+                  .filter(s => !beautyTabs.length || !beautyTab || s.tab === beautyTab)
+                  .filter(s => !subSearch || s.name.toLowerCase().includes(subSearch.toLowerCase()));
+                const cap = (x) => x ? x.charAt(0).toUpperCase() + x.slice(1) : x;
+                return <div className="space-y-4">
+                  {/* 1. Main category */}
+                  <div>
+                    <label className={labelCls}>1. Main category</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {classify.pages.map(pg => (
+                        <button key={pg.id} onClick={() => setWizard(w => ({ ...w, page: pg.id, subcat: "", collections: [] }))}
+                          className={cn("h-9 px-3.5 rounded-[10px] text-xs font-bold border transition-colors", wizard.page === pg.id ? "bg-[#2563eb] text-white border-transparent" : cn(brd, txt, hover))}>
+                          {cap(pg.id)}
+                        </button>
+                      ))}
+                      {!classify.pages.length && <p className={cn("text-xs", sub)}>Loading categories…</p>}
+                    </div>
                   </div>
-                  <p className={cn("text-[11px] mt-1.5", sub)}>Choose exactly where this product appears on the storefront so it isn't scattered everywhere.</p>
-                </div>
-                <div><label className={labelCls}>Status</label><select value={wizard.status} onChange={e => setWizard(w => ({ ...w, status: e.target.value }))} className={inpCls}><option value="draft">Draft</option><option value="active">Active (publish)</option></select></div>
-              </div>}
+
+                  {wizard.page && (
+                    <>
+                      {/* Beauty tabs */}
+                      {beautyTabs.length > 0 && (
+                        <div>
+                          <label className={labelCls}>Beauty tab</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button onClick={() => setBeautyTab("")} className={cn("h-8 px-3 rounded-[9px] text-[11px] font-bold border", beautyTab === "" ? "bg-[#2563eb] text-white border-transparent" : cn(brd, sub))}>All</button>
+                            {beautyTabs.map(t => <button key={t} onClick={() => setBeautyTab(t)} className={cn("h-8 px-3 rounded-[9px] text-[11px] font-bold border", beautyTab === t ? "bg-[#2563eb] text-white border-transparent" : cn(brd, sub))}>{cap(t)}</button>)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. Sub-category (searchable) */}
+                      <div>
+                        <label className={labelCls}>2. Shop by Category {classify.subcats.length ? `(${classify.subcats.length})` : ""}</label>
+                        <input value={subSearch} onChange={e => setSubSearch(e.target.value)} placeholder="Search sub-category…" className={cn(inpCls, "mb-2")} />
+                        <div className={cn("rounded-[10px] border max-h-44 overflow-y-auto divide-y", brd, divide)}>
+                          {subList.length === 0 && <p className={cn("p-3 text-xs", sub)}>{classify.subcats.length ? "No match." : "No sub-categories for this page yet — manage them in Landing Pages."}</p>}
+                          {subList.map(s => (
+                            <button key={s.id} onClick={() => setWizard(w => ({ ...w, subcat: w.subcat === s.id ? "" : s.id }))} className={cn("w-full flex items-center justify-between px-3 py-2 text-left text-sm", hover, wizard.subcat === s.id ? "bg-[#2563eb]/10" : "")}>
+                              <span className={cn("font-semibold", txt)}>{s.name}{s.tab ? <span className={cn("ml-2 text-[10px]", sub)}>· {cap(s.tab)}</span> : ""}</span>
+                              {wizard.subcat === s.id && <CheckCircle2 className="w-4 h-4 text-[#2563eb]" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 3. Collections (multi) */}
+                      {classify.collections.length > 0 && (
+                        <div>
+                          <label className={labelCls}>3. Collections (multi-select)</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {classify.collections.map(c => {
+                              const on = (wizard.collections || []).includes(c.id);
+                              return <button key={c.id} onClick={() => setWizard(w => ({ ...w, collections: on ? w.collections.filter(x => x !== c.id) : [...(w.collections || []), c.id] }))} className={cn("h-8 px-3 rounded-full text-[11px] font-bold border transition-colors", on ? "bg-[#2563eb] text-white border-transparent" : cn(brd, sub))}>{c.name}</button>;
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* 4. Marketing sections */}
+                  <div>
+                    <label className={labelCls}>4. Marketing sections (choose any)</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {MARKETING.map(({ key, label }) => (
+                        <label key={key} className={cn("flex items-center gap-2 cursor-pointer rounded-[10px] border px-3 py-2", brd, wizard[key] ? "border-[#2563eb]" : "")}>
+                          <input type="checkbox" checked={!!wizard[key]} onChange={e => setWizard(w => ({ ...w, [key]: e.target.checked }))} className="rounded" />
+                          <span className={cn("text-sm font-semibold", txt)}>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className={cn("text-[11px] mt-1.5", sub)}>The product can belong to several sections at once. Everything above is loaded live from your catalog — add a page, sub-category or collection in the admin and it appears here automatically.</p>
+                  </div>
+
+                  <div><label className={labelCls}>Status</label><select value={wizard.status} onChange={e => setWizard(w => ({ ...w, status: e.target.value }))} className={inpCls}><option value="draft">Draft</option><option value="active">Active (publish)</option></select></div>
+                </div>;
+              })()}
               {wizStep === 8 && <div className="space-y-2"><p className={cn("text-sm font-extrabold", txt)}>Review</p>{[["Name", wizard.name], ["Price", `$${wizard.price ?? "auto"}`], ["Images", wizard.images.length], ["Variants", wizard.variants.length], ["Status", wizard.status]].map(([l, v]) => <div key={l} className="flex justify-between text-xs"><span className={sub}>{l}</span><span className={cn("font-bold", txt)}>{v}</span></div>)}</div>}
               {wizStep === 9 && <div className={cn("rounded-[10px] border p-4 text-center", brd)}><Package className={cn("w-8 h-8 mx-auto mb-2", txt)} /><p className={cn("text-sm font-bold", txt)}>Ready to publish</p><p className={cn("text-xs mt-1", sub)}>A real product will be created in your catalog with variants, images and pricing.</p></div>}
 

@@ -8,6 +8,37 @@ import { ensureCreds, getCreds } from "./secrets";
 
 const BASE = "https://developers.cjdropshipping.com/api2.0/v1";
 
+/* ============ Smart search helpers ============ */
+const STOPWORDS = new Set(["the", "a", "an", "and", "or", "for", "with", "of", "in", "on", "to", "set", "pcs", "pc", "new", "hot", "fashion", "style", "women", "womens", "woman", "men", "mens", "man", "kids", "girls", "boys", "s"]);
+// Normalize: lowercase, strip punctuation/apostrophes/hyphens → spaces, collapse.
+function norm(s) {
+  return String(s || "").toLowerCase().replace(/['’`]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function tokens(s) { return norm(s).split(" ").filter(Boolean); }
+function keyTokens(s) { return tokens(s).filter(t => t.length > 1 && !STOPWORDS.has(t)); }
+
+// Relevance score of a product name against the original query (0..1000).
+function relevance(query, name) {
+  const q = norm(query), n = norm(name);
+  if (!q || !n) return 0;
+  if (q === n) return 1000;
+  let score = 0;
+  if (n.includes(q)) score += 600 + Math.round((q.length / n.length) * 100); // full query appears in title
+  const qt = tokens(q), nt = new Set(tokens(n));
+  const matched = qt.filter(t => nt.has(t)).length;
+  score += Math.round((matched / qt.length) * 300); // token coverage
+  // ordered bigram bonus (keeps phrase order relevance)
+  const qb = []; for (let i = 0; i < qt.length - 1; i++) qb.push(qt[i] + " " + qt[i + 1]);
+  const bigramHits = qb.filter(b => n.includes(b)).length;
+  score += bigramHits * 20;
+  // fuzzy token match (handles plurals / small typos)
+  const ntArr = [...nt];
+  let fuzzy = 0;
+  for (const t of qt) { if (!nt.has(t) && ntArr.some(x => x.length > 3 && (x.startsWith(t.slice(0, 4)) || t.startsWith(x.slice(0, 4))))) fuzzy++; }
+  score += Math.round((fuzzy / qt.length) * 80);
+  return score;
+}
+
 // CJ encodes a variant's options in variantKey, e.g. "White-S", "Wine Red-2XL",
 // "Black-XXL". Split on the LAST separator so multi-word colours stay intact and
 // the trailing token becomes the size. Falls back to treating the whole value as
@@ -99,16 +130,68 @@ export class CJAdapter extends SupplierAdapter {
     catch (e) { return { ok: false, configured: true, latency: Date.now() - t, message: e.message }; }
   }
 
+  // Intelligent multi-attempt search that mirrors CJ's official site behaviour:
+  // tries the exact title, then punctuation-free, then keyword-only, then a
+  // narrower keyword core; merges & de-dupes the pools and ranks everything by
+  // relevance to the ORIGINAL query so the right product surfaces at the top —
+  // even when the exact long title doesn't match CJ's filter verbatim.
   async searchProducts({ keyword, page = 1, pageSize = 20, category, warehouse } = {}) {
     await this.hydrate();
     if (!this.isConfigured()) return { ok: false, products: [], total: 0, configured: false, message: "CJ not connected — add credentials to search live products." };
+
+    const kw = String(keyword || "").trim();
+    const mapItem = (p) => ({
+      external_id: p.pid, name: p.productNameEn, image: p.productImage, supplier_price: Number(p.sellPrice) || 0,
+      category_external: p.categoryName, warehouse: p.entryCode, processing_time: p.deliveryTime, raw: p,
+    });
+
+    // One CJ page fetch for a given query string.
+    const fetchPool = async (q, pn = 1) => {
+      const d = await cj("/product/list", { query: { pageNum: pn, pageSize: 40, productNameEn: q || undefined, categoryId: category || undefined, countryCode: warehouse || undefined } });
+      return { list: d?.data?.list || [], total: d?.data?.total || 0 };
+    };
+
     try {
-      const d = await cj("/product/list", { query: { pageNum: page, pageSize, productNameEn: keyword || undefined, categoryId: category || undefined, countryCode: warehouse || undefined } });
-      const list = d?.data?.list || [];
-      return { ok: true, total: d?.data?.total || list.length, products: list.map(p => ({
-        external_id: p.pid, name: p.productNameEn, image: p.productImage, supplier_price: Number(p.sellPrice) || 0,
-        category_external: p.categoryName, warehouse: p.entryCode, processing_time: p.deliveryTime, raw: p,
-      })) };
+      // No keyword → plain paginated browse (with optional filters).
+      if (!kw) {
+        const d = await cj("/product/list", { query: { pageNum: page, pageSize, categoryId: category || undefined, countryCode: warehouse || undefined } });
+        const list = d?.data?.list || [];
+        return { ok: true, total: d?.data?.total || list.length, products: list.map(mapItem) };
+      }
+
+      // Build progressively looser query variants (deduped).
+      const kt = keyTokens(kw);
+      const variants = [...new Set([
+        kw,                                   // 1) exact
+        norm(kw),                             // 2) no punctuation
+        kt.join(" "),                         // 3) keywords only (drop stopwords)
+        kt.slice(0, 4).join(" "),             // 4) narrower core
+        kt.slice(0, 2).join(" "),             // 5) last resort
+      ].map(v => v && v.trim()).filter(Boolean))];
+
+      const byId = new Map();
+      let firstTotal = 0;
+      for (const v of variants) {
+        let pool;
+        try { pool = await fetchPool(v); } catch { continue; }
+        if (!firstTotal) firstTotal = pool.total;
+        for (const p of pool.list) if (p?.pid && !byId.has(p.pid)) byId.set(p.pid, p);
+        // Stop early once we have a solid pool AND a near-exact hit is present.
+        const hasStrong = [...byId.values()].some(p => relevance(kw, p.productNameEn) >= 600);
+        if (byId.size >= 40 && hasStrong) break;
+        if (byId.size >= 80) break;
+      }
+
+      // Rank the merged pool by relevance to the original query.
+      const ranked = [...byId.values()]
+        .map(p => ({ p, score: relevance(kw, p.productNameEn) }))
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.p);
+
+      const total = Math.max(ranked.length, firstTotal);
+      const start = (page - 1) * pageSize;
+      const pageItems = ranked.slice(start, start + pageSize).map(mapItem);
+      return { ok: true, total, products: pageItems };
     } catch (e) { return { ok: false, products: [], total: 0, message: e.message }; }
   }
 

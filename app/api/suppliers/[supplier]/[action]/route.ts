@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, { params }) {
     if (action === "search") {
       const adapter = getAdapter(supplier);
       const started = Date.now();
-      const res = await adapter.searchProducts({ keyword: sp.get("q"), page: parseInt(sp.get("page") || "1", 10), pageSize: 20, category: sp.get("category"), warehouse: sp.get("warehouse") });
+      const res = await adapter.searchProducts({ keyword: sp.get("q"), page: parseInt(sp.get("page") || "1", 10), pageSize: 20, category: sp.get("category"), warehouse: sp.get("warehouse"), debug: sp.get("debug") === "1", skuCheck: sp.get("sku") || undefined });
       await slog(s, { supplier_id: supplier, action: "search", endpoint: "/product/list", status: res.ok ? "ok" : "error", latency_ms: Date.now() - started, error: res.ok ? null : res.message });
       // cache results for the explorer / import
       if (res.ok) for (const p of res.products) { await s.from("supplier_products").upsert({ supplier_id: supplier, external_id: p.external_id, name: p.name, main_image: p.image, supplier_price: p.supplier_price, category_external: p.category_external, processing_time: p.processing_time, raw: p.raw }, { onConflict: "supplier_id,external_id", ignoreDuplicates: true }).then(() => {}, () => {}); }

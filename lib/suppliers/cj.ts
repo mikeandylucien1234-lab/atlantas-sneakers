@@ -130,59 +130,85 @@ export class CJAdapter extends SupplierAdapter {
     catch (e) { return { ok: false, configured: true, latency: Date.now() - t, message: e.message }; }
   }
 
-  // Intelligent multi-attempt search that mirrors CJ's official site behaviour:
-  // tries the exact title, then punctuation-free, then keyword-only, then a
-  // narrower keyword core; merges & de-dupes the pools and ranks everything by
-  // relevance to the ORIGINAL query so the right product surfaces at the top —
-  // even when the exact long title doesn't match CJ's filter verbatim.
-  async searchProducts({ keyword, page = 1, pageSize = 20, category, warehouse } = {}) {
+  // Intelligent multi-attempt search: exact title → punctuation-free →
+  // keywords-only → narrower core, across several CJ params (productNameEn,
+  // productName, productSku), merged/de-duped and ranked by relevance.
+  // `debug` returns the exact URLs, params, totals and whether `skuCheck` was
+  // found — so we can see if a missing product is an API-request issue.
+  async searchProducts({ keyword, page = 1, pageSize = 20, category, warehouse, debug = false, skuCheck } = {}) {
     await this.hydrate();
     if (!this.isConfigured()) return { ok: false, products: [], total: 0, configured: false, message: "CJ not connected — add credentials to search live products." };
 
     const kw = String(keyword || "").trim();
     const mapItem = (p) => ({
-      external_id: p.pid, name: p.productNameEn, image: p.productImage, supplier_price: Number(p.sellPrice) || 0,
+      external_id: p.pid, name: p.productNameEn, sku: p.productSku, image: p.productImage, supplier_price: Number(p.sellPrice) || 0,
       category_external: p.categoryName, warehouse: p.entryCode, processing_time: p.deliveryTime, raw: p,
     });
+    const dbg = [];
+    const buildUrl = (params) => { const u = new URL(`${BASE}/product/list`); Object.entries(params).forEach(([k, v]) => v != null && u.searchParams.set(k, String(v))); return u.toString(); };
+    const hit = (list) => skuCheck ? list.some(p => (p.productSku && String(p.productSku).toUpperCase() === String(skuCheck).toUpperCase()) || String(p.pid) === String(skuCheck)) : undefined;
 
-    // One CJ page fetch for a given query string.
-    const fetchPool = async (q, pn = 1) => {
-      const d = await cj("/product/list", { query: { pageNum: pn, pageSize: 40, productNameEn: q || undefined, categoryId: category || undefined, countryCode: warehouse || undefined } });
-      return { list: d?.data?.list || [], total: d?.data?.total || 0 };
+    // One CJ /product/list call for arbitrary params, with debug capture.
+    const listRaw = async (params, label) => {
+      const query = { pageSize: 40, pageNum: 1, categoryId: category || undefined, countryCode: warehouse || undefined, ...params };
+      const url = buildUrl(query);
+      try {
+        const d = await cj("/product/list", { query });
+        const list = d?.data?.list || [];
+        const rec = { attempt: label, url, params: query, total: d?.data?.total ?? 0, returned: list.length, skuFound: hit(list) };
+        if (debug) { rec.sampleNames = list.slice(0, 5).map(p => p.productNameEn); dbg.push(rec); }
+        console.log("[CJ search]", JSON.stringify(rec));
+        return { list, total: d?.data?.total || 0 };
+      } catch (e) {
+        const rec = { attempt: label, url, params: query, error: e.message };
+        if (debug) dbg.push(rec);
+        console.log("[CJ search][error]", JSON.stringify(rec));
+        return { list: [], total: 0 };
+      }
     };
 
     try {
-      // No keyword → plain paginated browse (with optional filters).
+      // No keyword → plain paginated browse.
       if (!kw) {
         const d = await cj("/product/list", { query: { pageNum: page, pageSize, categoryId: category || undefined, countryCode: warehouse || undefined } });
         const list = d?.data?.list || [];
-        return { ok: true, total: d?.data?.total || list.length, products: list.map(mapItem) };
+        return { ok: true, total: d?.data?.total || list.length, products: list.map(mapItem), ...(debug ? { debug: dbg } : {}) };
       }
-
-      // Build progressively looser query variants (deduped).
-      const kt = keyTokens(kw);
-      const variants = [...new Set([
-        kw,                                   // 1) exact
-        norm(kw),                             // 2) no punctuation
-        kt.join(" "),                         // 3) keywords only (drop stopwords)
-        kt.slice(0, 4).join(" "),             // 4) narrower core
-        kt.slice(0, 2).join(" "),             // 5) last resort
-      ].map(v => v && v.trim()).filter(Boolean))];
 
       const byId = new Map();
+      const absorb = (pool) => { for (const p of pool.list) if (p?.pid && !byId.has(p.pid)) byId.set(p.pid, p); };
       let firstTotal = 0;
-      for (const v of variants) {
-        let pool;
-        try { pool = await fetchPool(v); } catch { continue; }
-        if (!firstTotal) firstTotal = pool.total;
-        for (const p of pool.list) if (p?.pid && !byId.has(p.pid)) byId.set(p.pid, p);
-        // Stop early once we have a solid pool AND a near-exact hit is present.
-        const hasStrong = [...byId.values()].some(p => relevance(kw, p.productNameEn) >= 600);
-        if (byId.size >= 40 && hasStrong) break;
-        if (byId.size >= 80) break;
+
+      // 0) If the term looks like a SKU/PID → definitive exact lookup by SKU.
+      const looksLikeSku = !kw.includes(" ") && kw.length >= 6 && /\d/.test(kw) && /^[A-Za-z0-9._-]+$/.test(kw);
+      if (looksLikeSku) {
+        const bySku = await listRaw({ productSku: kw }, "productSku");
+        firstTotal = bySku.total; absorb(bySku);
+        // also try CJ /product/query which resolves a SKU directly to a product
+        try {
+          const q = await cj("/product/query", { query: { productSku: kw } });
+          const qp = q?.data;
+          if (qp?.pid && !byId.has(qp.pid)) { byId.set(qp.pid, { pid: qp.pid, productNameEn: qp.productNameEn, productSku: qp.productSku, productImage: qp.productImage, sellPrice: qp.sellPrice, categoryName: qp.categoryName }); }
+          if (debug) dbg.push({ attempt: "product/query?productSku", url: `${BASE}/product/query?productSku=${encodeURIComponent(kw)}`, found: !!qp?.pid, name: qp?.productNameEn });
+        } catch (e) { if (debug) dbg.push({ attempt: "product/query?productSku", error: e.message }); }
       }
 
-      // Rank the merged pool by relevance to the original query.
+      // Name-based variants across two CJ name params.
+      const kt = keyTokens(kw);
+      const variants = [...new Set([kw, norm(kw), kt.join(" "), kt.slice(0, 4).join(" "), kt.slice(0, 2).join(" ")].map(v => v && v.trim()).filter(Boolean))];
+      for (const v of variants) {
+        const a = await listRaw({ productNameEn: v }, `productNameEn="${v}"`);
+        if (!firstTotal) firstTotal = a.total; absorb(a);
+        if (skuCheck && hit(a.list)) break;                          // stop as soon as target SKU appears
+        // CJ also indexes some products under `productName` — try it too.
+        const b = await listRaw({ productName: v }, `productName="${v}"`);
+        absorb(b);
+        if (skuCheck && hit(b.list)) break;
+        const strong = [...byId.values()].some(p => relevance(kw, p.productNameEn) >= 600);
+        if (byId.size >= 40 && strong) break;
+        if (byId.size >= 120) break;
+      }
+
       const ranked = [...byId.values()]
         .map(p => ({ p, score: relevance(kw, p.productNameEn) }))
         .sort((a, b) => b.score - a.score)
@@ -191,8 +217,10 @@ export class CJAdapter extends SupplierAdapter {
       const total = Math.max(ranked.length, firstTotal);
       const start = (page - 1) * pageSize;
       const pageItems = ranked.slice(start, start + pageSize).map(mapItem);
-      return { ok: true, total, products: pageItems };
-    } catch (e) { return { ok: false, products: [], total: 0, message: e.message }; }
+      const out = { ok: true, total, products: pageItems };
+      if (debug) { out.debug = { query: kw, skuCheck: skuCheck || null, skuFoundAnywhere: skuCheck ? ranked.some(p => String(p.productSku).toUpperCase() === String(skuCheck).toUpperCase()) : null, pool: byId.size, attempts: dbg }; }
+      return out;
+    } catch (e) { return { ok: false, products: [], total: 0, message: e.message, ...(debug ? { debug: dbg } : {}) }; }
   }
 
   async getProduct(externalId) {

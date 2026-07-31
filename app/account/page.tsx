@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { User, Package, Heart, MapPin, CreditCard, Trophy, Settings, LogOut, ChevronRight, Edit3, Star, Loader2, Trash2, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ProfileInformation } from "@/components/account/profile-information";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { useWishlistStore } from "@/lib/store/wishlist-store";
@@ -58,21 +59,12 @@ export default function AccountPage() {
   const signOut = useAuthStore((s) => s.signOut);
   const user = useAuthStore((s) => s.user);
   const profile = useAuthStore((s) => s.profile);
-  const updateProfile = useAuthStore((s) => s.updateProfile);
   const wishlistItems = useWishlistStore((s) => s.items);
   const removeFromWishlist = useWishlistStore((s) => s.removeItem);
 
   const displayName = profile?.full_name || user?.user_metadata?.full_name || "";
   const displayEmail = user?.email || "";
   const nameInitial = displayName ? displayName.charAt(0).toUpperCase() : displayEmail ? displayEmail.charAt(0).toUpperCase() : "?";
-
-  const [fullName, setFullName] = useState(displayName);
-  const [phone, setPhone] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setFullName(profile?.full_name || user?.user_metadata?.full_name || "");
-  }, [profile, user]);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -88,10 +80,6 @@ export default function AccountPage() {
     }
   }, [activeSection, user]);
 
-  const memberSince = profile?.created_at
-    ? new Date(profile.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" })
-    : "";
-
   const points = profile?.points ?? 0;
   const tierInfo = getTierInfo(points);
   const rewardsValue = (points * 0.01).toFixed(2);
@@ -99,21 +87,10 @@ export default function AccountPage() {
     ? Math.min(100, Math.round((points / tierInfo.nextThreshold) * 100))
     : 100;
 
-  const handleSaveProfile = async () => {
-    setSaving(true);
-    try {
-      await updateProfile({ full_name: fullName });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleSignOut = async () => {
     await signOut();
     router.push("/");
   };
-
-  const inputCls = "w-full h-[46px] rounded-[12px] border-[1.5px] border-[#e4e7eb] bg-[#fbfbfc] px-4 text-[14px] font-medium text-[#16181d] placeholder:text-[#9aa3ad] outline-none focus:border-[#2563eb]";
 
   return (
     <div className="mt-4">
@@ -170,40 +147,7 @@ export default function AccountPage() {
 
         {/* Content */}
         <div className="bg-white border border-[#eef0f3] rounded-[16px] p-6">
-          {activeSection === "profile" && (
-            <>
-              <h2 className="text-[18px] font-extrabold text-[#16181d] mb-5">Profile Information</h2>
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-[72px] h-[72px] rounded-full bg-[#2563eb] text-white flex items-center justify-center text-[28px] font-bold">
-                  {nameInitial}
-                </div>
-                <div>
-                  <p className="text-[16px] font-bold text-[#16181d]">{displayName || "User"}</p>
-                  {memberSince && <p className="text-[13px] text-[#5b6472]">Member since {memberSince}</p>}
-                </div>
-                <button type="button" className="ml-auto w-[36px] h-[36px] flex items-center justify-center rounded-[10px] border border-[#e4e7eb] text-[#5b6472] hover:text-[#2563eb] hover:border-[#2563eb] transition-colors cursor-pointer">
-                  <Edit3 className="w-[16px] h-[16px]" />
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Full Name</label>
-                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} />
-                </div>
-                <div>
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Email</label>
-                  <input type="email" value={displayEmail} readOnly className={`${inputCls} opacity-60`} />
-                </div>
-                <div>
-                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Phone</label>
-                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Enter your phone number" className={inputCls} />
-                </div>
-              </div>
-              <Button size="md" className="mt-5" onClick={handleSaveProfile} disabled={saving}>
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Saving...</> : "Save Changes"}
-              </Button>
-            </>
-          )}
+          {activeSection === "profile" && <ProfileInformation />}
 
           {activeSection === "orders" && (
             <>

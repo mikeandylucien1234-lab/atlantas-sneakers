@@ -12,7 +12,7 @@ type AuthState = {
   setUser: (user: User | null) => void;
   setProfile: (profile: Profile | null) => void;
   signOut: () => Promise<void>;
-  updateProfile: (updates: Partial<Pick<Profile, "full_name" | "avatar_url">>) => Promise<void>;
+  updateProfile: (updates: Partial<Pick<Profile, "full_name" | "avatar_url" | "phone">>) => Promise<void>;
 };
 
 export const useAuthStore = create<AuthState>()((set, get) => ({

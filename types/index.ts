@@ -3,6 +3,7 @@ export type Profile = {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
+  phone: string | null;
   role: "customer" | "admin";
   points: number;
   created_at: string;

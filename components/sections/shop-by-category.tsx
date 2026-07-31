@@ -15,6 +15,9 @@ const fallback = [
 ];
 
 const radiusCls = (r: string) => (r === "square" ? "rounded-[14px]" : r === "rounded" ? "rounded-[24px]" : "rounded-full");
+// Fallback slug from a category name so a tile always resolves to a real
+// /category/<slug> page (never the non-existent /categories route).
+const slugify = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 export function ShopByCategory() {
   const { data } = useQuery(() => getHomepageCategories(), []);
@@ -28,7 +31,7 @@ export function ShopByCategory() {
         radius: c.border_radius || "circle",
         bg_color: c.bg_color || "#eef0f3",
         newTab: !!c.open_new_tab,
-        href: c.category?.slug ? `/category/${c.category.slug}` : "/categories",
+        href: `/category/${c.category?.slug || slugify(c.name)}`,
       }))
     : fallback;
 

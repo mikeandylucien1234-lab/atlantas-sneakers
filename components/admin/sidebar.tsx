@@ -48,6 +48,7 @@ import {
   Settings,
   ExternalLink,
   Menu,
+  Megaphone,
   Layout,
   X,
 } from "lucide-react";
@@ -98,6 +99,7 @@ const navGroups: NavGroup[] = [
     label: "Content",
     items: [
       { id: "banners", label: "Banners", icon: ImageIcon },
+      { id: "announcementbar", label: "Announcement Bar", icon: Megaphone },
       { id: "homepage", label: "Homepage", icon: Home },
       { id: "homepagecategories", label: "Shop by Category", icon: Grid3x3 },
       { id: "navtabs", label: "Category Tabs", icon: Menu },

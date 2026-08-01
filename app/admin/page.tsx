@@ -54,6 +54,7 @@ import { AdminWarranties } from "@/components/admin/modules/warranties";
 import { AdminHomepageCategories } from "@/components/admin/modules/homepage-categories";
 import { AdminHomepageNavTabs } from "@/components/admin/modules/homepage-nav-tabs";
 import { AdminMenLanding } from "@/components/admin/modules/men-landing";
+import { AdminAnnouncementBar } from "@/components/admin/modules/announcement-bar";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -135,6 +136,8 @@ export default function AdminPage() {
         return <AdminOrders dark={dark} />;
       case "products":
         return <AdminProducts dark={dark} onNavigate={setActiveModule} />;
+      case "announcementbar":
+        return <AdminAnnouncementBar dark={dark} />;
       case "banners":
         return <AdminBanners dark={dark} />;
       case "backup":

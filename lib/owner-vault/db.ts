@@ -54,10 +54,19 @@ export async function getVaultData(): Promise<VaultData> {
     monthly.push({ label, total: sum(t) });
   }
 
+  // Settlement model mirroring the payment processor: a confirmed payment is
+  // held ("pending") for a settlement window, then becomes "available" for a
+  // MANUAL owner withdrawal. No automatic payout is ever performed.
+  const SETTLEMENT_DAYS = 7;
+  const cutoff = Date.now() - SETTLEMENT_DAYS * 24 * 3600 * 1000;
+  const settled = sum(pays.filter((p) => new Date(p.paid_at).getTime() <= cutoff));
+  const incomingPending = sum(pays.filter((p) => new Date(p.paid_at).getTime() > cutoff));
+
   const wds = withdrawals || [];
   const withdrawn = sum(wds.filter((w) => w.status === "completed"));
-  const pending = sum(wds.filter((w) => w.status === "pending" || w.status === "processing"));
-  const available = Math.max(0, total - withdrawn - pending);
+  const withdrawalsPending = sum(wds.filter((w) => w.status === "pending" || w.status === "processing"));
+  const available = Math.max(0, settled - withdrawn - withdrawalsPending);
+  const pending = incomingPending + withdrawalsPending;
 
   return {
     admins: adm,

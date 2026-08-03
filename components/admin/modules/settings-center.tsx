@@ -72,14 +72,17 @@ export function AdminSettingsCenter({ dark }: Props) {
   const snapshot = () => api("/version", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: `Manual ${new Date().toISOString().slice(0, 16)}` }) }).then(() => showToast("Snapshot saved")).catch(e => showToast(e.message, "error"));
   const doImport = () => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = "application/json"; inp.onchange = async () => { const file = inp.files?.[0]; if (!file) return; try { const snap = JSON.parse(await file.text()); await api("/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshot: snap }) }); showToast("Configuration imported"); load(); } catch (e) { showToast("Invalid file: " + e.message, "error"); } }; inp.click(); };
 
-  if (loading) return <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className={cn("rounded-[16px] border h-24 animate-pulse", p, brd)} />)}</div>;
-
+  // NOTE: all hooks must run before any early return (React rules of hooks).
   const filteredGroups = useMemo(() => {
     if (!q) return groups;
     const ql = q.toLowerCase();
-    return groups.map(g => ({ ...g, fields: g.fields.filter(f => f.label.toLowerCase().includes(ql) || f.key.includes(ql)) })).filter(g => g.label.toLowerCase().includes(ql) || g.fields.length);
+    return groups
+      .map(g => ({ ...g, fields: (g.fields || []).filter(f => f.label.toLowerCase().includes(ql) || f.key.includes(ql)) }))
+      .filter(g => g.label.toLowerCase().includes(ql) || g.fields.length);
   }, [groups, q]);
   const current = filteredGroups.find(g => g.id === activeGroup) || filteredGroups[0];
+
+  if (loading) return <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className={cn("rounded-[16px] border h-24 animate-pulse", p, brd)} />)}</div>;
 
   const K = dash?.kpis || {};
   const dashCards = dash ? [

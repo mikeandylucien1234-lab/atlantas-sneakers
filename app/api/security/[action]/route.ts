@@ -44,7 +44,7 @@ export async function GET(request: NextRequest, { params }) {
         s.from("staff_activity_logs").select("action, created_at, status").gte("created_at", todayStart),
       ]);
       const SL = secLogs || [], SS = staffSessions || [], AL = alerts || [];
-      const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com");
+      const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com");
       const scoring = computeSecurityScore(settings, { https: base.startsWith("https") });
       const loginsToday = (staffLogs || []).filter(l => l.action === "login").length + (perm || []).filter(p => p.event === "login").length;
       const failedToday = SL.filter(l => (l.result === "failed" || l.result === "denied") && l.created_at >= todayStart).length + (staffLogs || []).filter(l => l.status === "error").length;
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest, { params }) {
     }
 
     if (action === "encryption") {
-      const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com");
+      const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com");
       return Response.json({ encryption: {
         https: base.startsWith("https"), ssl: base.startsWith("https") ? "Valid (managed by host)" : "Not detected",
         password_hash: "bcrypt (Supabase Auth / GoTrue)", hash_algorithm: "SHA-256 (API keys, tokens)",
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest, { params }) {
 
     if (action === "test") {
       // Real self-test: fetch own homepage and verify security headers are present.
-      const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, "");
+      const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, "");
       const settings = await getSettings(s);
       const expected = buildSecurityHeaders(settings.headers);
       const checks = [];

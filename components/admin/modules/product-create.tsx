@@ -707,7 +707,7 @@ export function ProductCreate({ dark, onBack, editProductId }: Props) {
               <div className={cn("rounded-[10px] border p-3", brd)}>
                 <p className={cn("text-[10px] font-semibold uppercase tracking-wider mb-2", sub)}>Search Preview</p>
                 <p className="text-[#1a0dab] text-sm font-medium truncate">{form.meta_title || form.name || "Product Title"}</p>
-                <p className="text-[#006621] text-xs truncate">atlantassneakers.com/product/{form.slug || "..."}</p>
+                <p className="text-[#006621] text-xs truncate">atlantasneaker.com/product/{form.slug || "..."}</p>
                 <p className="text-[#545454] text-xs mt-0.5 line-clamp-2">{form.meta_description || form.description?.slice(0, 160) || "Product description..."}</p>
               </div>
             </div>

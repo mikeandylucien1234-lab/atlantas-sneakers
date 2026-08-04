@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
       const urlCount = (pc || 0) + (cc || 0) + (bc || 0) + 6;
       await supabase.from("sitemap_logs").insert({ url_count: urlCount, status: "success", detail: { products: pc || 0, categories: cc || 0, brands: bc || 0 } });
       await audit(supabase, auth, request, "sitemap.generated", null, null, { urlCount });
-      const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com";
+      const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com";
       return Response.json({ success: true, urlCount, url: `${base}/sitemap.xml` });
     }
 

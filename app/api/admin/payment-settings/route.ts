@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
       if (!gw) return Response.json({ error: "Gateway not found" }, { status: 404 });
       const CODE = code.toUpperCase();
       const name = gw.display_name;
-      const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com";
+      const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com";
 
       const initiateFile = `// app/api/payments/${code}/initiate/route.ts
 // Custom initiate route for ${name}. Adapt PROVIDER_API to the provider's docs.
@@ -297,7 +297,7 @@ app/api/webhooks/${code}/route.ts modelled on app/api/webhooks/moncash/route.ts
       }
     });
 
-    const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com";
+    const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com";
     const webhookUrls = {
       moncash: `${base}/api/webhooks/moncash`,
       natcash: `${base}/api/webhooks/natcash`,

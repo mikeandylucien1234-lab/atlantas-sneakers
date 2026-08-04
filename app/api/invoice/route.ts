@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     <div class="top">
       <div>
         <div class="brand">Atlanta<span>Sneakers</span></div>
-        <p style="font-size:12px;color:#8a929c;margin-top:4px">atlantassneakers.com</p>
+        <p style="font-size:12px;color:#8a929c;margin-top:4px">atlantasneaker.com</p>
       </div>
       <div class="meta">
         <h1>Invoice</h1>

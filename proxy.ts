@@ -11,8 +11,30 @@ const authPaths = ["/auth/login", "/auth/register", "/auth/forgot-password"];
 // Paths that never need SEO redirect lookups
 const SKIP_REDIRECT = /^\/(?:_next|api|admin|favicon|robots\.txt|sitemap\.xml|.*\.\w+$)/;
 
+// Canonical host — every other spelling (www, the old double-s / plural
+// variants) is 301-redirected here so engines index a single origin.
+// Unknown hosts (localhost, o2switch preview, IPs) are left untouched.
+const CANONICAL_HOST = "atlantasneaker.com";
+const NON_CANONICAL_HOSTS = new Set([
+  "www.atlantasneaker.com",
+  "atlantasneakers.com",
+  "www.atlantasneakers.com",
+  "atlantassneakers.com",
+  "www.atlantassneakers.com",
+]);
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // 0a) Canonical-host redirect (www / plural / double-s → canonical).
+  const host = (request.headers.get("host") || "").toLowerCase().split(":")[0];
+  if (NON_CANONICAL_HOSTS.has(host)) {
+    const url = request.nextUrl.clone();
+    url.host = CANONICAL_HOST;
+    url.protocol = "https:";
+    url.port = "";
+    return NextResponse.redirect(url, 301);
+  }
 
   // 0) IP blocklist enforcement (cached; enforced at the edge). Never crash on error.
   try {

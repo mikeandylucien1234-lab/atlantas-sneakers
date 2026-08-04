@@ -32,7 +32,7 @@ export default async function RootLayout({
 }>) {
   const seo = await getSeoSettings();
   const tiktok = await getTikTokSettings();
-  const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, "");
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, "");
   const siteName = seo?.site_name || "Atlanta Sneakers";
 
   // Organization + WebSite structured data (schema.org) — real, injected globally

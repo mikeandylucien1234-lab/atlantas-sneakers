@@ -221,7 +221,7 @@ export function AdminSearchConsole({ dark }: Props) {
             <div className="flex items-center gap-2"><PlugZap className="w-4 h-4 text-[#2563eb]" /><p className={cn("text-sm font-extrabold", txt)}>Google Search Console Connection</p></div>
             <div><label className={labelCls}>Google Account</label><input value={settings.google_account || ""} onChange={e => setField("google_account", e.target.value)} className={inpCls} placeholder="you@gmail.com" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className={labelCls}>Property URL <span className="text-red-500">*</span></label><input value={settings.property_url || ""} onChange={e => setField("property_url", e.target.value)} className={inpCls} placeholder="https://atlantassneakers.com/" /></div>
+              <div><label className={labelCls}>Property URL <span className="text-red-500">*</span></label><input value={settings.property_url || ""} onChange={e => setField("property_url", e.target.value)} className={inpCls} placeholder="https://atlantasneaker.com/" /></div>
               <div><label className={labelCls}>Property Type</label><select value={settings.property_type || "domain"} onChange={e => setField("property_type", e.target.value)} className={inpCls}><option value="domain">Domain</option><option value="url_prefix">URL prefix</option></select></div>
             </div>
             <div><label className={labelCls}>Google Client ID</label><input value={settings.google_client_id || ""} onChange={e => setField("google_client_id", e.target.value)} className={inpCls} placeholder="xxx.apps.googleusercontent.com" /></div>
@@ -328,7 +328,7 @@ export function AdminSearchConsole({ dark }: Props) {
           <div className={cn(cardCls, "p-5")}>
             <label className={labelCls}>Inspect a URL</label>
             <div className="flex gap-2">
-              <input value={inspectUrl} onChange={e => setInspectUrl(e.target.value)} className={inpCls} placeholder="https://atlantassneakers.com/product/..." onKeyDown={e => e.key === "Enter" && inspectUrl && runAction("inspect", { url: inspectUrl })} />
+              <input value={inspectUrl} onChange={e => setInspectUrl(e.target.value)} className={inpCls} placeholder="https://atlantasneaker.com/product/..." onKeyDown={e => e.key === "Enter" && inspectUrl && runAction("inspect", { url: inspectUrl })} />
               <button onClick={() => runAction("inspect", { url: inspectUrl })} disabled={busy === "inspect" || !inspectUrl} className={btnPrimary}>{busy === "inspect" ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />} Inspect URL</button>
             </div>
           </div>

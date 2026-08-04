@@ -396,7 +396,7 @@ export function AdminHomepage({ dark }: Props) {
           <div className={cn("rounded-[10px] p-4", dark ? "bg-[#1d242e]" : "bg-[#f6f8fb]")}>
             <p className={cn("text-[11px] font-bold uppercase mb-2", sub)}>Search Preview</p>
             <p className="text-[16px] text-[#1a0dab] font-medium">{seo.title || "Atlanta Sneakers"}</p>
-            <p className="text-[13px] text-[#006621]">atlantasneakers.com</p>
+            <p className="text-[13px] text-[#006621]">atlantasneaker.com</p>
             <p className="text-[12px] text-[#545454] mt-0.5">{seo.description || "Shop premium sneakers and fashion in Haiti."}</p>
           </div>
           <button onClick={handleSaveSeo} disabled={seoLoading}

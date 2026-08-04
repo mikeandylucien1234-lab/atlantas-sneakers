@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 export const revalidate = 3600;
 
 function baseUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, "");
 }
 
 export default async function robots(): Promise<MetadataRoute.Robots> {

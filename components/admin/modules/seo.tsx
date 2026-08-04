@@ -252,13 +252,13 @@ export function AdminSeo({ dark }: Props) {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className={labelCls}>Default Meta Keywords</label><input value={settings.default_keywords || ""} onChange={e => setField("default_keywords", e.target.value)} className={inpCls} placeholder="sneakers, shoes, nike, adidas" /></div>
-            <div><label className={labelCls}>Canonical Base URL</label><input value={settings.canonical_base || ""} onChange={e => setField("canonical_base", e.target.value)} className={inpCls} placeholder="https://atlantassneakers.com" /></div>
+            <div><label className={labelCls}>Canonical Base URL</label><input value={settings.canonical_base || ""} onChange={e => setField("canonical_base", e.target.value)} className={inpCls} placeholder="https://atlantasneaker.com" /></div>
           </div>
           {/* Google preview */}
           <div className={cn("rounded-[12px] border p-3", brd)}>
             <p className={cn("text-[10px] font-bold uppercase tracking-wider mb-2", sub)}>Google Search Preview</p>
             <p className="text-[#1a0dab] text-[15px] font-medium truncate">{previewTitle}</p>
-            <p className="text-[#006621] text-xs truncate">{settings.canonical_base || base || "atlantassneakers.com"}</p>
+            <p className="text-[#006621] text-xs truncate">{settings.canonical_base || base || "atlantasneaker.com"}</p>
             <p className="text-[#545454] text-xs mt-0.5 line-clamp-2">{settings.global_meta_description || "Shop 100% authentic sneakers from Nike, Adidas, Jordan and more."}</p>
           </div>
           <button onClick={() => saveSettings(["site_name", "separator", "global_meta_title", "global_meta_description", "default_keywords", "canonical_base"])} disabled={saving} className="h-10 px-5 rounded-[11px] bg-[#2563eb] text-white text-sm font-bold hover:bg-[#1d4ed8] disabled:opacity-50 flex items-center gap-2">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Global SEO</button>

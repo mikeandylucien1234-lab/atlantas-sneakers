@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const revalidate = 3600;
 
 function baseUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, "");
 }
 
 type Entry = { url: string; lastmod: Date; changefreq: string; priority: number };

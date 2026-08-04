@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (section === "webhooks") {
-      const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com";
+      const base = process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com";
       const { data } = await supabase.from("tiktok_webhooks").select("*").order("created_at", { ascending: false }).limit(50);
       return Response.json({ webhooks: data || [], webhookUrl: `${base}/api/webhooks/tiktok`, hasSecret: !!process.env.TIKTOK_WEBHOOK_SECRET });
     }

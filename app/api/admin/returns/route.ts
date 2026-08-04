@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
       const { return_id, carrier, tracking_number, warehouse } = body;
       if (!return_id) return Response.json({ error: "return_id required" }, { status: 400 });
       const tn = tracking_number || `RTN${Date.now().toString().slice(-10)}`;
-      const labelUrl = `https://atlantassneakers.com/returns/label/${return_id}?tn=${encodeURIComponent(tn)}`;
+      const labelUrl = `https://atlantasneaker.com/returns/label/${return_id}?tn=${encodeURIComponent(tn)}`;
       const { error } = await supabase.from("return_requests").update({
         carrier: carrier || null, tracking_number: tn, warehouse: warehouse || undefined,
         return_label_url: labelUrl, status: "awaiting_shipment", updated_at: new Date().toISOString(),

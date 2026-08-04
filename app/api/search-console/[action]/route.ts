@@ -15,7 +15,7 @@ import crypto from "crypto";
 // ----------------------------------------------------------------------------
 
 const DAY = 24 * 3600 * 1000;
-function baseUrl() { return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, ""); }
+function baseUrl() { return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, ""); }
 function anon() { return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } }); }
 
 async function checkAdmin(supabase) {

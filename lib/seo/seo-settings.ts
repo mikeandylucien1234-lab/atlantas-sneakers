@@ -39,14 +39,19 @@ export async function getSeoSettings(): Promise<SeoSettings | null> {
 }
 
 export function buildRootMetadata(seo: SeoSettings | null): Metadata {
-  const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, "");
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, "");
+  // canonical_base may be admin-entered without a scheme; normalise so new URL() never throws.
+  const rawCanonical = seo?.canonical_base?.trim();
+  const canonical = rawCanonical
+    ? (/^https?:\/\//i.test(rawCanonical) ? rawCanonical : `https://${rawCanonical}`).replace(/\/$/, "")
+    : base;
   const siteName = seo?.site_name || "Atlanta Sneakers";
   const sep = seo?.separator || "|";
   const title = seo?.global_meta_title || `${siteName} ${sep} Premium Sneaker Marketplace`;
   const description = seo?.global_meta_description || "Shop 100% authentic sneakers from Nike, Adidas, Jordan, New Balance and more. Free shipping over $100.";
 
   const meta: Metadata = {
-    metadataBase: new URL(seo?.canonical_base || base),
+    metadataBase: new URL(canonical),
     title: { default: title, template: `%s ${sep} ${siteName}` },
     description,
     keywords: seo?.default_keywords || undefined,

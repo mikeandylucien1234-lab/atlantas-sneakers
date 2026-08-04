@@ -1379,7 +1379,7 @@ function DetailTabContent({ tab, product, data, dark }: {
           <h3 className={cn("text-sm font-bold", txt)}>Search Engine Preview</h3>
           <div className={cn("rounded-[12px] border p-4", brd)}>
             <p className="text-[#1a0dab] text-[16px] font-medium truncate">{product.name} | Atlanta Sneakers</p>
-            <p className="text-[#006621] text-[13px] truncate">atlantasneakers.com/product/{product.slug}</p>
+            <p className="text-[#006621] text-[13px] truncate">atlantasneaker.com/product/{product.slug}</p>
             <p className="text-[#545454] text-[13px] mt-1 line-clamp-2">{product.description || "No description available."}</p>
           </div>
           <DetailField label="URL Slug" value={`/product/${product.slug}`} dark={dark} />

@@ -10,7 +10,7 @@ export const REGISTRY = {
     ["logo_url", "Store Logo (URL)", "text", ""],
     ["favicon_url", "Favicon (URL)", "text", ""],
     ["business_address", "Business Address", "text", ""],
-    ["support_email", "Support Email", "text", "support@atlantassneakers.com"],
+    ["support_email", "Support Email", "text", "support@atlantasneaker.com"],
     ["support_phone", "Support Phone", "text", ""],
     ["country", "Country", "text", "Haiti"],
     ["city", "City", "text", "Port-au-Prince"],
@@ -89,8 +89,8 @@ export const REGISTRY = {
   ],
   email: [
     ["sender_name", "Sender Name", "text", "Atlanta Sneakers"],
-    ["sender_email", "Sender Email", "text", "noreply@atlantassneakers.com"],
-    ["reply_to", "Reply-To", "text", "support@atlantassneakers.com"],
+    ["sender_email", "Sender Email", "text", "noreply@atlantasneaker.com"],
+    ["reply_to", "Reply-To", "text", "support@atlantasneaker.com"],
     ["footer_text", "Email Footer", "text", "© Atlanta Sneakers"],
   ],
   seo_defaults: [

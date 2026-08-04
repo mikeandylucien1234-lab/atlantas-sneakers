@@ -18,7 +18,7 @@ const MODULES: Record<string, { title: string; description: string; items: Setti
     description: "General store configuration",
     items: [
       { icon: Store, label: "Store Name", value: "Atlanta Sneakers", type: "text" },
-      { icon: Mail, label: "Contact Email", value: "contact@atlantasneakers.com", type: "text" },
+      { icon: Mail, label: "Contact Email", value: "contact@atlantasneaker.com", type: "text" },
       { icon: DollarSign, label: "Currency", value: "USD ($)", type: "text" },
       { icon: Globe, label: "Language", value: "English", type: "text" },
       { icon: Clock, label: "Timezone", value: "America/New_York", type: "text" },
@@ -118,7 +118,7 @@ const MODULES: Record<string, { title: string; description: string; items: Setti
       { icon: Bell, label: "Email on Low Stock", value: "", type: "toggle" },
       { icon: Bell, label: "Email on New Review", value: "", type: "toggle" },
       { icon: Bell, label: "Push Notifications", value: "", type: "toggle" },
-      { icon: Mail, label: "Notification Email", value: "admin@atlantasneakers.com", type: "text" },
+      { icon: Mail, label: "Notification Email", value: "admin@atlantasneaker.com", type: "text" },
     ],
   },
   security: {

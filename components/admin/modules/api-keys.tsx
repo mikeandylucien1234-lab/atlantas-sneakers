@@ -267,7 +267,7 @@ export function AdminApiKeys({ dark }: Props) {
               <div><label className={labelCls}>Rate / hour</label><input type="number" value={createForm.rate_per_hour} onChange={e => setCreateForm(f => ({ ...f, rate_per_hour: parseInt(e.target.value) || 0 }))} className={inpCls} /></div>
               <div><label className={labelCls}>Rate / day</label><input type="number" value={createForm.rate_per_day} onChange={e => setCreateForm(f => ({ ...f, rate_per_day: parseInt(e.target.value) || 0 }))} className={inpCls} /></div>
               <div><label className={labelCls}>Burst</label><input type="number" value={createForm.burst_limit || 40} onChange={e => setCreateForm(f => ({ ...f, burst_limit: parseInt(e.target.value) || 0 }))} className={inpCls} /></div>
-              <div className="md:col-span-2"><label className={labelCls}>Allowed Domains (comma)</label><input value={createForm.allowed_domains} onChange={e => setCreateForm(f => ({ ...f, allowed_domains: e.target.value }))} className={inpCls} placeholder="atlantassneakers.com" /></div>
+              <div className="md:col-span-2"><label className={labelCls}>Allowed Domains (comma)</label><input value={createForm.allowed_domains} onChange={e => setCreateForm(f => ({ ...f, allowed_domains: e.target.value }))} className={inpCls} placeholder="atlantasneaker.com" /></div>
               <div className="md:col-span-2"><label className={labelCls}>Allowed IPs (comma)</label><input value={createForm.allowed_ips} onChange={e => setCreateForm(f => ({ ...f, allowed_ips: e.target.value }))} className={inpCls} placeholder="1.2.3.4" /></div>
             </div>
             <div className="flex flex-wrap gap-3">

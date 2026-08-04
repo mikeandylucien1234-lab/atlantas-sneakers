@@ -1,7 +1,7 @@
 // Schema.org structured-data builders. Pure functions — reused by any page.
 
 function siteBase(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, "");
 }
 
 export function buildBreadcrumb(items: { name: string; url: string }[]) {

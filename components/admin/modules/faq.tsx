@@ -505,7 +505,7 @@ export function AdminFaq({ dark }: { dark: boolean }) {
                 <div className={cn("rounded-[10px] border p-4", dark ? "bg-[#0f1318] border-[#252c36]" : "bg-[#f8f9fb] border-[#eef0f3]")}>
                   <p className={cn("text-xs font-semibold mb-2", dark ? "text-[#8b95a3]" : "text-[#8a929c]")}>Google Preview</p>
                   <p className="text-[#1a0dab] text-base font-medium truncate">{detailDrawer.meta_title || detailDrawer.question}</p>
-                  <p className="text-[#006621] text-xs truncate">atlantasneakers.com/faq/{detailDrawer.slug}</p>
+                  <p className="text-[#006621] text-xs truncate">atlantasneaker.com/faq/{detailDrawer.slug}</p>
                   <p className={cn("text-xs mt-1 line-clamp-2", dark ? "text-[#8b95a3]" : "text-[#545454]")}>{detailDrawer.meta_description || detailDrawer.summary || ""}</p>
                 </div>
               </div>
@@ -769,7 +769,7 @@ export function AdminFaq({ dark }: { dark: boolean }) {
           <div className={cn("rounded-[10px] border p-4", dark ? "bg-[#0f1318] border-[#252c36]" : "bg-[#f8f9fb] border-[#eef0f3]")}>
             <p className={cn("text-xs font-semibold mb-2", dark ? "text-[#8b95a3]" : "text-[#8a929c]")}>Google Preview</p>
             <p className="text-[#1a0dab] text-base font-medium truncate">{seoForm.title || "FAQ - Atlanta Sneakers"}</p>
-            <p className="text-[#006621] text-xs">atlantasneakers.com/faq</p>
+            <p className="text-[#006621] text-xs">atlantasneaker.com/faq</p>
             <p className={cn("text-xs mt-1 line-clamp-2", dark ? "text-[#8b95a3]" : "text-[#545454]")}>{seoForm.description || ""}</p>
           </div>
           <div className="flex justify-end gap-2">

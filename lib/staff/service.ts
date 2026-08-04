@@ -8,7 +8,7 @@ import { sendEmail } from "@/lib/notifications/senders";
 export function svc() {
   return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
 }
-function siteUrl() { return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantassneakers.com").replace(/\/$/, ""); }
+function siteUrl() { return (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, ""); }
 
 export async function logActivity(s, { staff_id, actor, action, entity, detail, ip, status = "ok" }) {
   try { await s.from("staff_activity_logs").insert({ staff_id: staff_id || null, actor_id: actor?.id || null, actor_name: actor?.full_name || actor?.email || "Admin", action, entity: entity || null, detail: detail || null, ip_address: ip || null, status }); } catch {}

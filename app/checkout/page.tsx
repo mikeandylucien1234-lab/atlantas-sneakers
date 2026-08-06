@@ -100,7 +100,7 @@ function OrderSummary({ shippingCost, grandTotal, tax = 0 }: { shippingCost: num
   );
 }
 
-function StripePaymentForm({ onSuccess, onBack, totalAmount }: { onSuccess: (orderNum: string) => void; onBack: () => void; totalAmount: number }) {
+function StripePaymentForm({ onSuccess, onBack, totalAmount }: { onSuccess: (paymentIntentId: string) => Promise<void>; onBack: () => void; totalAmount: number }) {
   const stripeHook = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
@@ -117,8 +117,15 @@ function StripePaymentForm({ onSuccess, onBack, totalAmount }: { onSuccess: (ord
     if (submitError) { setError(submitError.message ?? "Payment failed"); setProcessing(false); return; }
     const { error: confirmError, paymentIntent: confirmedIntent } = await stripeHook.confirmPayment({ elements, confirmParams: { return_url: `${window.location.origin}/payment/success?gateway=stripe` }, redirect: "if_required" });
     if (confirmError) { setError(confirmError.message ?? "Payment failed. Please try again."); setProcessing(false); return; }
-    // The webhook creates the order for Stripe payments; show a generic confirmation
-    onSuccess(confirmedIntent?.id ?? "stripe-pending");
+    if (!confirmedIntent?.id) { setError("Payment could not be confirmed. Please try again."); setProcessing(false); return; }
+    // Payment captured — finalize the order on the server (creates the order,
+    // records the payment, dispatches to the supplier). Only then confirm.
+    try {
+      await onSuccess(confirmedIntent.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Payment succeeded but the order could not be finalized. Please contact support with your payment reference.");
+      setProcessing(false);
+    }
   };
 
   return (
@@ -376,6 +383,23 @@ export default function CheckoutPage() {
     setOrderNumber(orderNum);
     clearCart();
     setStep(5);
+  };
+
+  // Stripe: after the card is charged, create the order server-side (reliable,
+  // independent of the webhook). Throws on failure so the form shows the error
+  // instead of a false "Order Confirmed" screen.
+  const finalizeStripeOrder = async (paymentIntentId: string) => {
+    const res = await fetch("/api/checkout/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        paymentIntentId,
+        shippingAddress: { email, phone, firstName, lastName, address, city, state, country, postalCode },
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.orderNumber) throw new Error(data.error || "Failed to finalize order");
+    handlePaymentSuccess(data.orderNumber);
   };
 
   const handleMobilePayment = async (gateway: "moncash" | "natcash") => {
@@ -648,7 +672,7 @@ export default function CheckoutPage() {
                       stripe={getStripePromise(publishableKey)!}
                       options={{ clientSecret, appearance: { theme: "stripe", variables: { borderRadius: "12px", fontFamily: "system-ui, sans-serif", colorPrimary: "#2563eb" } } }}
                     >
-                      <StripePaymentForm onSuccess={handlePaymentSuccess} onBack={() => setStep(3)} totalAmount={grandTotal} />
+                      <StripePaymentForm onSuccess={finalizeStripeOrder} onBack={() => setStep(3)} totalAmount={grandTotal} />
                     </Elements>
                   )}
                   {clientSecret && !getStripePromise(publishableKey) && (

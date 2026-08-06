@@ -1,12 +1,11 @@
 import { NextRequest } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { createClient } from "@supabase/supabase-js";
+import { finalizeStripeOrder, dispatchSupplierOrders } from "@/lib/orders/fulfillment";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
+// Stripe webhook — a BACKUP path for order creation. The primary path is the
+// client-driven /api/checkout/confirm route; both share finalizeStripeOrder and
+// are idempotent, so whichever fires first creates the order and the other
+// no-ops. This keeps orders reliable whether or not the webhook is configured.
 export async function POST(request: NextRequest) {
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
@@ -25,70 +24,12 @@ export async function POST(request: NextRequest) {
 
   if (event.type === "payment_intent.succeeded") {
     const paymentIntent = event.data.object;
-    const { userId, items: itemsJson, shippingCost, discount, subtotal } = paymentIntent.metadata;
-
     try {
-      // Idempotency: check if an order already exists for this payment intent
-      const { data: existingOrder } = await supabaseAdmin
-        .from("orders")
-        .select("id")
-        .eq("stripe_payment_intent_id", paymentIntent.id)
-        .maybeSingle();
-
-      if (existingOrder) {
-        console.log(`Order already exists for payment intent ${paymentIntent.id}, skipping`);
-        return Response.json({ received: true });
+      const result = await finalizeStripeOrder(paymentIntent);
+      if (result.created) {
+        await dispatchSupplierOrders(result.orderId);
+        console.log(`Order ${result.orderNumber} created via webhook for ${paymentIntent.id}`);
       }
-
-      const items = JSON.parse(itemsJson || "[]") as Array<{
-        pid: string; vid: string | null; qty: number; price: number;
-      }>;
-
-      const orderNumber = `AS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-
-      const { data: order, error: orderError } = await supabaseAdmin
-        .from("orders")
-        .insert({
-          order_number: orderNumber,
-          user_id: userId !== "guest" ? userId : null,
-          status: "confirmed",
-          payment_status: "paid",
-          subtotal: Number(subtotal),
-          shipping_cost: Number(shippingCost),
-          discount: Number(discount),
-          total: paymentIntent.amount / 100,
-          stripe_payment_intent_id: paymentIntent.id,
-        })
-        .select()
-        .single();
-
-      if (orderError) {
-        console.error("Order creation error:", orderError);
-        return Response.json({ error: "Order creation failed" }, { status: 500 });
-      }
-
-      if (items.length > 0) {
-        await supabaseAdmin
-          .from("order_items")
-          .insert(
-            items.map((item) => ({
-              order_id: order.id,
-              product_id: item.pid,
-              variant_id: item.vid,
-              quantity: item.qty,
-              price: item.price,
-            }))
-          );
-      }
-
-      if (userId && userId !== "guest") {
-        await supabaseAdmin
-          .from("cart_items")
-          .delete()
-          .eq("user_id", userId);
-      }
-
-      console.log(`Order ${orderNumber} created for payment ${paymentIntent.id}`);
     } catch (err) {
       console.error("Webhook processing error:", err);
       return Response.json({ error: "Processing failed" }, { status: 500 });

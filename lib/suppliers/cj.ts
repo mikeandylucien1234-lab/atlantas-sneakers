@@ -255,7 +255,11 @@ export class CJAdapter extends SupplierAdapter {
     if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
     try {
       const d = await cj("/shopping/order/createOrder", { method: "POST", body: {
-        orderNumber: order.orderNumber, shippingCountryCode: order.countryCode, shippingProvince: order.province,
+        orderNumber: order.orderNumber,
+        // Warehouse the goods ship FROM — CJ requires this. Defaults to CN (CJ's
+        // primary warehouse); override per-deployment with CJ_FROM_COUNTRY_CODE.
+        fromCountryCode: order.fromCountryCode || process.env.CJ_FROM_COUNTRY_CODE || "CN",
+        shippingCountryCode: order.countryCode, shippingProvince: order.province,
         shippingCity: order.city, shippingAddress: order.address, shippingCustomerName: order.name,
         shippingZip: order.zip, shippingPhone: order.phone, remark: "Atlanta Sneakers",
         products: (order.items || []).map(i => ({ vid: i.external_variant_id, quantity: i.quantity })),
@@ -271,6 +275,26 @@ export class CJAdapter extends SupplierAdapter {
       const d = await cj("/logistic/getTrackInfo", { query: { trackNumber: ref } });
       const t = d?.data;
       return { ok: true, tracking_number: ref, carrier: t?.logisticName, status: t?.trackStatus, current_country: t?.country, history: t?.trackList || [] };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  // Poll a placed CJ order for its fulfillment state + tracking number. Used by
+  // the automatic tracking-sync job to pull shipping updates without any manual
+  // step. Returns { status, tracking_number, carrier } when available.
+  async getOrderStatus(externalOrderId) {
+    await this.hydrate();
+    if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    try {
+      const d = await cj("/shopping/order/getOrderDetail", { query: { orderId: externalOrderId } });
+      const o = d?.data || {};
+      const tracking = o.trackNumber || o.trackingNumber || null;
+      return {
+        ok: true,
+        status: o.orderStatus || o.status || null,
+        tracking_number: tracking,
+        carrier: o.logisticName || o.shippingName || null,
+        raw: o,
+      };
     } catch (e) { return { ok: false, message: e.message }; }
   }
 

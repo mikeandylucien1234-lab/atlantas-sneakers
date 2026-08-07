@@ -338,6 +338,7 @@ export default function CheckoutPage() {
           shippingMethod,
           couponCode: coupon?.code,
           userId: user?.id,
+          shippingAddress: { email, phone, firstName, lastName, address, city, state, country, postalCode },
         }),
       })
         .then((res) => res.json())

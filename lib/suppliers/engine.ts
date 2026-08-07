@@ -199,3 +199,77 @@ export async function syncInventory({ supplierId, limit = 100, actor }) {
   await slog(s, { supplier_id: supplierId, action: "sync_inventory", status: "ok", error: `${updated} products` });
   return { ok: true, updated };
 }
+
+// Map a raw CJ order/tracking status onto our customer-facing order status.
+function mapFulfillmentToOrderStatus(supplierStatus, hasTracking) {
+  const v = String(supplierStatus || "").toLowerCase();
+  if (/deliver/.test(v)) return "delivered";
+  if (/(ship|transit|dispatch|fulfil|track)/.test(v) || hasTracking) return "shipped";
+  if (/cancel/.test(v)) return "cancelled";
+  return null; // leave the order status unchanged
+}
+
+// Pull the latest state for ONE placed supplier order from the supplier and
+// write it back to supplier_orders, supplier_tracking AND the linked customer
+// order (tracking number, carrier, status). Fully automatic — no manual step.
+export async function syncSupplierOrder({ supplierId = "cj", supplierOrder }) {
+  const s = svc();
+  const adapter = getAdapter(supplierId);
+  const so = supplierOrder;
+  if (!so?.external_order_id) return { ok: false, message: "no external order id" };
+
+  const detail = await adapter.getOrderStatus(so.external_order_id);
+  if (!detail.ok) { await slog(s, { supplier_id: supplierId, action: "sync_order", status: "error", error: detail.message }); return detail; }
+
+  let tracking = detail.tracking_number || null;
+  let carrier = detail.carrier || null;
+  let history = [];
+  // Once a tracking number exists, pull the carrier scan history too.
+  if (tracking) {
+    const t = await adapter.getTracking(tracking);
+    if (t.ok) { carrier = carrier || t.carrier; history = t.history || []; }
+  }
+
+  await s.from("supplier_orders").update({
+    status: tracking ? "shipped" : (so.status || "created"),
+    raw: detail.raw || so.raw, updated_at: new Date().toISOString(),
+  }).eq("id", so.id).then(() => {}, () => {});
+
+  if (tracking) {
+    await s.from("supplier_tracking").upsert({
+      supplier_order_id: so.id, order_id: so.order_id || null, tracking_number: tracking,
+      carrier, status: detail.status, current_country: detail.raw?.country || null, history, updated_at: new Date().toISOString(),
+    }, { onConflict: "supplier_order_id" }).then(() => {}, () => {});
+  }
+
+  // Reflect onto the customer order.
+  if (so.order_id) {
+    const orderStatus = mapFulfillmentToOrderStatus(detail.status, !!tracking);
+    const patch: any = { fulfillment_status: tracking ? "shipped" : "submitted" };
+    if (tracking) { patch.tracking_number = tracking; patch.carrier = carrier; patch.tracking_status = detail.status || null; patch.tracking_history = history; if (!so.tracking_number) patch.shipped_at = new Date().toISOString(); }
+    if (orderStatus) patch.status = orderStatus;
+    await s.from("orders").update(patch).eq("id", so.order_id).then(() => {}, () => {});
+  }
+
+  await slog(s, { supplier_id: supplierId, action: "sync_order", status: "ok", error: tracking ? `tracking ${tracking}` : "no tracking yet" });
+  return { ok: true, tracking_number: tracking, carrier, status: detail.status };
+}
+
+// Sweep all open supplier orders (placed, not yet delivered) and sync each.
+// Called by the scheduled tracking-sync job so updates flow with no manual work.
+export async function syncOpenSupplierOrders({ supplierId = "cj", limit = 100 } = {}) {
+  const s = svc();
+  const { data: open } = await s.from("supplier_orders")
+    .select("*")
+    .eq("supplier_id", supplierId)
+    .not("external_order_id", "is", null)
+    .neq("status", "delivered")
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  let synced = 0, shipped = 0;
+  for (const so of open || []) {
+    const r = await syncSupplierOrder({ supplierId, supplierOrder: so });
+    if (r.ok) { synced++; if (r.tracking_number) shipped++; }
+  }
+  return { ok: true, synced, shipped };
+}

@@ -28,6 +28,8 @@ interface Order {
   status: string;
   total: number;
   created_at: string;
+  tracking_number?: string | null;
+  carrier?: string | null;
   items: Array<{ id: string; quantity: number; price: number; product: { name: string; slug: string; images: string[] } | null }>;
 }
 
@@ -185,6 +187,9 @@ export default function AccountPage() {
                             <span className={cn("inline-block px-2.5 py-1 rounded-[6px] text-[11px] font-bold capitalize", statusColor[o.status] ?? "bg-[#f7f8fa] text-[#5b6472]")}>
                               {o.status}
                             </span>
+                            {o.tracking_number && (
+                              <span className="block text-[11px] text-[#5b6472] mt-1">{o.carrier ? `${o.carrier} · ` : ""}{o.tracking_number}</span>
+                            )}
                           </td>
                           <td className="py-3 px-2 text-[13px] font-bold text-[#16181d]">${o.total.toFixed(2)}</td>
                           <td className="py-3 px-2 text-right space-x-3">

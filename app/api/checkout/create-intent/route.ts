@@ -25,10 +25,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { items, shippingMethod, couponCode } = body as {
+    const { items, shippingMethod, couponCode, shippingAddress } = body as {
       items: Array<{ productId: string; variantId: string | null; name: string; price: number; quantity: number }>;
       shippingMethod?: string;
       couponCode?: string;
+      shippingAddress?: Record<string, string>;
     };
 
     if (!items?.length) {
@@ -136,6 +137,9 @@ export async function POST(request: NextRequest) {
         discount: String(discount),
         subtotal: String(subtotal),
         items: JSON.stringify(items.map((i) => ({ pid: i.productId, vid: i.variantId, qty: i.quantity, price: i.price }))),
+        // Stored so the webhook path can create a shippable order even if the
+        // client-side confirm call never runs. Stripe caps each value at 500 chars.
+        ...(shippingAddress ? { ship: JSON.stringify(shippingAddress).slice(0, 490) } : {}),
       },
     });
 

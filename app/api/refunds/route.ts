@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { processRefund, supabaseAdmin } from "@/lib/payments/payment-service";
+import { refundOrder, supabaseAdmin } from "@/lib/payments/payment-service";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -27,23 +27,23 @@ export async function POST(request: NextRequest) {
   const user = await getAuthUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { paymentId, amount, reason, type } = (await request.json()) as {
-    paymentId: string;
-    amount: number;
-    reason: string;
-    type: "full" | "partial";
+  const { orderId, amount, reason } = (await request.json()) as {
+    orderId: string;
+    amount?: number;
+    reason?: string;
   };
 
-  if (!paymentId || !amount) {
-    return Response.json({ error: "Missing required fields" }, { status: 400 });
+  if (!orderId) {
+    return Response.json({ error: "orderId is required" }, { status: 400 });
   }
 
-  const result = await processRefund(paymentId, amount, reason, type);
+  // Single official refund flow — performs a REAL Stripe refund for card orders.
+  const result = await refundOrder(orderId, { amount, reason });
   if (!result.success) {
     return Response.json({ error: result.error }, { status: 400 });
   }
 
-  return Response.json({ success: true });
+  return Response.json({ success: true, refundId: result.refundId, amount: result.amount, type: result.type, manual: result.manual });
 }
 
 export async function GET(request: NextRequest) {

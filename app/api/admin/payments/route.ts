@@ -227,24 +227,14 @@ export async function PUT(request: NextRequest) {
     }
 
     if (action === "refund") {
-      if (payment.status !== "paid") return Response.json({ error: "Only paid payments can be refunded" }, { status: 400 });
-      const amount = Number(body.amount) || Number(payment.amount);
-      if (amount <= 0 || amount > Number(payment.amount)) return Response.json({ error: "Invalid refund amount" }, { status: 400 });
-      const partial = amount < Number(payment.amount);
-
-      const { error: refundError } = await supabase.from("refunds").insert({
-        payment_id: id, order_id: payment.order_id, amount,
-        type: partial ? "partial" : "full",
-        reason: body.reason || "Admin refund", status: "completed", processed_at: now,
-      });
-      if (refundError) return Response.json({ error: refundError.message }, { status: 400 });
-
-      if (!partial) {
-        await supabase.from("payments").update({ status: "refunded", updated_at: now }).eq("id", id);
-        await supabase.from("orders").update({ payment_status: "refunded" }).eq("id", payment.order_id);
-      }
-      await log("payment.refunded", { amount, partial, reason: body.reason || null });
-      return Response.json({ success: true });
+      // Route through the single official refund flow (REAL Stripe refund for
+      // card payments). No fake DB-only "refunded" here.
+      if (!payment.order_id) return Response.json({ error: "Payment has no associated order" }, { status: 400 });
+      const { refundOrder } = await import("@/lib/payments/payment-service");
+      const result = await refundOrder(payment.order_id, { amount: body.amount != null ? Number(body.amount) : undefined, reason: body.reason || "Admin refund" });
+      if (!result.success) return Response.json({ error: result.error }, { status: 400 });
+      await log("payment.refunded", { amount: result.amount, type: result.type, refundId: result.refundId, manual: result.manual, reason: body.reason || null });
+      return Response.json({ success: true, refundId: result.refundId, amount: result.amount, type: result.type, manual: result.manual });
     }
 
     if (action === "resend_receipt") {

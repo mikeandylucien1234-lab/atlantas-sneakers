@@ -240,6 +240,29 @@ export function AdminOrders({ dark }: Props) {
     }
   };
 
+  // ── REAL REFUND (single official Stripe flow via /api/refunds → refundOrder) ──
+  const [refundingId, setRefundingId] = useState<string | null>(null);
+  const handleRefund = async (orderId: string, total: number) => {
+    if (!confirm(`Issue a REAL refund of ${fmtCurrency(total)} to the customer via Stripe? This returns the money to their card and cannot be undone.`)) return;
+    setRefundingId(orderId);
+    try {
+      const res = await fetch("/api/refunds", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, reason: "Admin refund" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Refund failed");
+      showToast(d.manual ? "Manual refund recorded" : `Refunded via Stripe (${d.refundId || "ok"})`);
+      fetchOrders();
+      fetchKpis();
+      if (detailData && detailData.id === orderId) openDetail({ id: orderId } as OrderRow);
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Refund error", "error");
+    } finally {
+      setRefundingId(null);
+    }
+  };
+
   // ── DELETE ──
   const handleDelete = async (ids: string[]) => {
     if (!confirm(`Delete ${ids.length} order(s)? This cannot be undone.`)) return;
@@ -567,7 +590,7 @@ export function AdminOrders({ dark }: Props) {
                               onBlur={() => setPaymentEditId(null)}
                               className={cn("text-[11px] rounded-md px-2 py-1 border outline-none", inp)}
                             >
-                              {["pending", "paid", "failed", "refunded"].map(s => <option key={s} value={s}>{s}</option>)}
+                              {["pending", "paid", "failed"].map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           ) : (
                             <button
@@ -749,7 +772,7 @@ export function AdminOrders({ dark }: Props) {
                               onChange={(e) => handlePaymentStatusChange(o.id, e.target.value)}
                               className={cn("text-[12px] rounded-[8px] border px-2 py-1.5 w-full outline-none", inp)}
                             >
-                              {["pending", "paid", "failed", "refunded"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                              {["pending", "paid", "failed"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                             </select>
                           </div>
                         </div>
@@ -803,8 +826,8 @@ export function AdminOrders({ dark }: Props) {
                         <button onClick={() => handleStatusChange(o.id, "cancelled")} className="h-[36px] px-3 rounded-[10px] border border-[#ef4444] text-[#ef4444] text-[12px] font-semibold flex items-center gap-1.5 hover:bg-[#ef4444]/10 transition-colors">
                           <Ban className="w-3.5 h-3.5" /> Cancel Order
                         </button>
-                        <button onClick={() => handlePaymentStatusChange(o.id, "refunded")} className="h-[36px] px-3 rounded-[10px] border border-[#ea7317] text-[#ea7317] text-[12px] font-semibold flex items-center gap-1.5 hover:bg-[#ea7317]/10 transition-colors">
-                          <RotateCcw className="w-3.5 h-3.5" /> Refund
+                        <button disabled={refundingId === o.id} onClick={() => handleRefund(o.id, Number(o.total))} className="h-[36px] px-3 rounded-[10px] border border-[#ea7317] text-[#ea7317] text-[12px] font-semibold flex items-center gap-1.5 hover:bg-[#ea7317]/10 transition-colors disabled:opacity-50">
+                          <RotateCcw className="w-3.5 h-3.5" /> {refundingId === o.id ? "Refunding…" : "Refund"}
                         </button>
                         <button onClick={() => handleDelete([o.id])} className="h-[36px] px-3 rounded-[10px] border border-[#ef4444] text-[#ef4444] text-[12px] font-semibold flex items-center gap-1.5 hover:bg-[#ef4444]/10 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -870,8 +893,8 @@ export function AdminOrders({ dark }: Props) {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <button onClick={() => handlePaymentStatusChange(o.id, "refunded")} className="h-[36px] px-3 rounded-[10px] bg-[#ea7317] text-white text-[12px] font-semibold flex items-center gap-1.5 hover:bg-[#d96a13] transition-colors">
-                          <RotateCcw className="w-3.5 h-3.5" /> Full Refund
+                        <button disabled={refundingId === o.id} onClick={() => handleRefund(o.id, Number(o.total))} className="h-[36px] px-3 rounded-[10px] bg-[#ea7317] text-white text-[12px] font-semibold flex items-center gap-1.5 hover:bg-[#d96a13] transition-colors disabled:opacity-50">
+                          <RotateCcw className="w-3.5 h-3.5" /> {refundingId === o.id ? "Refunding…" : "Full Refund"}
                         </button>
                       </div>
                     </div>

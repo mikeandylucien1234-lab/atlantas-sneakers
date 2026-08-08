@@ -320,6 +320,13 @@ export async function PUT(request: NextRequest) {
 
   if (!id) return Response.json({ error: "id is required" }, { status: 400 });
 
+  // Refunds must go through the single official refund flow (/api/refunds →
+  // refundOrder), which performs a REAL Stripe refund. Never allow a plain status
+  // write to mark an order "refunded" without money actually moving.
+  if (updates.payment_status === "refunded") {
+    return Response.json({ error: "Use the Refund action to issue a real refund — payment_status cannot be set to 'refunded' directly." }, { status: 400 });
+  }
+
   const allowedFields = ["status", "payment_status", "shipping_address", "tracking_number", "notes", "payment_method"];
   const filtered: Record<string, any> = {};
   for (const key of allowedFields) {

@@ -129,7 +129,7 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   // Variants
   const variants = overrides.variants || detail.variants || [];
   for (const v of variants) {
-    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, sku: v.sku || null, stock: v.stock ?? 0 }).then(() => {}, () => {});
+    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, sku: v.sku || null, stock: v.stock ?? 0, image_url: v.image || v.variantImage || null }).then(() => {}, () => {});
   }
   // Image records (source stored; local re-hosting/webp is an optional enhancement)
   for (let i = 0; i < images.length; i++) {

@@ -67,6 +67,7 @@ export type ProductVariant = {
   color_hex: string | null;
   stock: number;
   sku: string | null;
+  image_url?: string | null;
   created_at: string;
 };
 

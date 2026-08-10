@@ -71,6 +71,9 @@ export default function ProductClient() {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  // Set when the shopper explicitly taps a gallery thumbnail; overrides the
+  // colour-driven image until they pick another colour.
+  const [manualImage, setManualImage] = useState<string | null>(null);
 
   const addItem = useCartStore((s) => s.addItem);
   const toggleWishlist = useWishlistStore((s) => s.toggleItem);
@@ -83,14 +86,32 @@ export default function ProductClient() {
 
   const colors = useMemo(() => {
     if (!product?.variants) return [];
-    const seen = new Map<string, string>();
+    const seen = new Map<string, { hex: string; image: string | null }>();
     for (const v of product.variants) {
-      if (v.color && !seen.has(v.color)) seen.set(v.color, v.color_hex ?? "#333");
+      if (v.color && !seen.has(v.color)) seen.set(v.color, { hex: v.color_hex ?? "#333", image: v.image_url ?? null });
     }
-    return Array.from(seen, ([name, hex]) => ({ name, hex }));
+    return Array.from(seen, ([name, meta]) => ({ name, hex: meta.hex, image: meta.image }));
   }, [product?.variants]);
 
   const images = product?.images?.length ? product.images : ["/placeholder.svg"];
+
+  // The variant matching the current colour (+ size when chosen). Drives both the
+  // hero image and the exact image/SKU saved to the cart.
+  const activeVariant = useMemo(() => {
+    const vs = product?.variants;
+    if (!vs?.length) return null;
+    return (
+      vs.find((v) => (!selectedColor || v.color === selectedColor) && (!selectedSize || v.size === selectedSize)) ??
+      vs.find((v) => !!selectedColor && v.color === selectedColor) ??
+      null
+    );
+  }, [product?.variants, selectedColor, selectedSize]);
+  const variantImage = activeVariant?.image_url ?? null;
+  // Priority: an explicit thumbnail tap → the selected colour's image → the gallery.
+  const heroImage = manualImage ?? variantImage ?? images[selectedImage] ?? images[0];
+  // What gets stored in the cart: the exact colour image when one exists, else
+  // whatever the shopper is currently looking at (never blindly images[0]).
+  const cartImage = variantImage ?? heroImage ?? images[0];
 
   const avgRating = useMemo(() => {
     if (!product?.reviews?.length) return 0;
@@ -125,12 +146,13 @@ export default function ProductClient() {
   const handleAddToCart = () => {
     // Only require a size when the product actually has sizes.
     if (sizes.length > 0 && !selectedSize) return;
-    const variant = product.variants?.find((v) => (!selectedSize || v.size === selectedSize) && (!selectedColor || v.color === selectedColor));
+    // Resolve the exact variant for the chosen colour + size (carries the real SKU).
+    const variant = activeVariant ?? product.variants?.find((v) => (!selectedSize || v.size === selectedSize) && (!selectedColor || v.color === selectedColor));
     addItem({
       productId: product.id,
       variantId: variant?.id ?? (selectedSize ? `${product.id}-${selectedSize}` : product.id),
       name: product.name,
-      image: images[0],
+      image: cartImage,
       price: Number(product.price),
       comparePrice: product.compare_price ? Number(product.compare_price) : null,
       size: selectedSize ?? "",
@@ -173,7 +195,7 @@ export default function ProductClient() {
         {/* Gallery */}
         <div>
           <div className="aspect-square bg-[#f4f5f7] rounded-[18px] overflow-hidden relative">
-            <Image src={images[selectedImage]} alt={product.name} fill className="object-cover" sizes="(max-width:768px) 100vw, 50vw" priority />
+            <Image src={heroImage} alt={selectedColor ? `${product.name} — ${selectedColor}` : product.name} fill className="object-cover" sizes="(max-width:768px) 100vw, 50vw" priority />
             <div className="absolute top-3 left-3 flex flex-col gap-1.5">
               {product.is_new && <Badge variant="new">New</Badge>}
               {product.compare_price && (
@@ -184,9 +206,9 @@ export default function ProductClient() {
           {images.length > 1 && (
             <div className="flex gap-[10px] mt-3">
               {images.map((img, i) => (
-                <button key={i} type="button" onClick={() => setSelectedImage(i)}
+                <button key={i} type="button" onClick={() => { setSelectedImage(i); setManualImage(img); }}
                   className={cn("w-[72px] h-[72px] rounded-[12px] overflow-hidden border-2 transition-all duration-150 cursor-pointer bg-[#f4f5f7] relative",
-                    i === selectedImage ? "border-[#2563eb]" : "border-transparent hover:border-[#e4e7eb]"
+                    (manualImage ? img === manualImage : i === selectedImage && !variantImage) ? "border-[#2563eb]" : "border-transparent hover:border-[#e4e7eb]"
                   )}
                 >
                   <Image src={img} alt="" fill className="object-cover" sizes="72px" />
@@ -226,7 +248,7 @@ export default function ProductClient() {
               </div>
               <div className="flex gap-[10px]">
                 {colors.map((c) => (
-                  <button key={c.name} type="button" title={c.name} onClick={() => setSelectedColor(c.name)}
+                  <button key={c.name} type="button" title={c.name} onClick={() => { setSelectedColor(c.name); setManualImage(null); }}
                     className={cn("w-[52px] h-[52px] rounded-[13px] border-2 transition-all duration-150 cursor-pointer",
                       (selectedColor ?? colors[0].name) === c.name ? "border-[#2563eb] scale-105" : "border-[#e4e7eb] hover:border-[#9aa3ad]"
                     )}

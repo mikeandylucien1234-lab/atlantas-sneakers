@@ -68,6 +68,7 @@ export type ProductVariant = {
   stock: number;
   sku: string | null;
   image_url?: string | null;
+  external_variant_id?: string | null;
   created_at: string;
 };
 

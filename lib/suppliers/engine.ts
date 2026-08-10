@@ -129,7 +129,7 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   // Variants
   const variants = overrides.variants || detail.variants || [];
   for (const v of variants) {
-    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, sku: v.sku || null, stock: v.stock ?? 0, image_url: v.image || v.variantImage || null }).then(() => {}, () => {});
+    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, sku: v.sku || null, stock: v.stock ?? 0, image_url: v.image || v.variantImage || null, external_variant_id: v.external_variant_id || null }).then(() => {}, () => {});
   }
   // Image records (source stored; local re-hosting/webp is an optional enhancement)
   for (let i = 0; i < images.length; i++) {
@@ -157,6 +157,74 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   await s.from("supplier_inventory").upsert({ supplier_id: supplierId, external_id: externalId, product_id: product.id, stock: variants.reduce((a, v) => a + (v.stock || 0), 0), supplier_price: cost, synced_at: new Date().toISOString() }, { onConflict: "supplier_id,external_id,variant_sku" }).then(() => {}, () => {});
   await slog(s, { supplier_id: supplierId, action: "import", status: "ok", actor_id: actor?.id, actor_name: actor?.full_name || actor?.email, error: null });
   return { ok: true, product_id: product.id, price, comparePrice };
+}
+
+// Sync full CJ variant data (vid, variantSku, colour, size, image) onto our
+// product_variants. STRICTLY NON-DESTRUCTIVE: never deletes a variant, never
+// overwrites correct data with empty, only fills/updates the CJ mapping + missing
+// fields. Runs where the CJ API is reachable (e.g. o2switch). Pass a productId to
+// sync one product, or omit to sync every imported CJ product.
+export async function syncProductVariants({ supplierId = "cj", productId = null, limit = 500, actor = null } = {}) {
+  const s = svc();
+  const adapter = getAdapter(supplierId);
+  let q = s.from("supplier_products")
+    .select("id, external_id, imported_product_id, raw, images")
+    .eq("supplier_id", supplierId).eq("imported", true).not("external_id", "is", null);
+  if (productId) q = q.eq("imported_product_id", productId);
+  const { data: prods } = await q.limit(limit);
+
+  let synced = 0, failed = 0, variantsUpdated = 0, variantsInserted = 0;
+  const errors = [];
+  for (const sp of prods || []) {
+    try {
+      const res = await adapter.getProduct(sp.external_id);
+      if (!res.ok || !res.product) {
+        failed++; errors.push({ pid: sp.external_id, error: res.message || "getProduct failed" });
+        await slog(s, { supplier_id: supplierId, action: "sync_variants", status: "error", error: res.message || "getProduct failed" });
+        continue;
+      }
+      const detail = res.product;
+      const variants = detail.variants || [];
+      for (const v of variants) {
+        if (!v.sku) continue;
+        const { data: existing } = await s.from("product_variants")
+          .select("id, image_url, color, size, color_hex, external_variant_id")
+          .eq("product_id", sp.imported_product_id).eq("sku", v.sku).maybeSingle();
+        if (existing) {
+          const patch = {};
+          if (v.external_variant_id) patch.external_variant_id = v.external_variant_id; // authoritative CJ id (non-empty only)
+          if (v.image && !existing.image_url) patch.image_url = v.image;             // fill, never blank out
+          if (v.color && !existing.color) patch.color = v.color;
+          if (v.size && !existing.size) patch.size = v.size;
+          if (v.color_hex && !existing.color_hex) patch.color_hex = v.color_hex;
+          if (Object.keys(patch).length) { await s.from("product_variants").update(patch).eq("id", existing.id); variantsUpdated++; }
+        } else {
+          // CJ variant we didn't have yet → additive insert (never a delete).
+          await s.from("product_variants").insert({
+            product_id: sp.imported_product_id, sku: v.sku, external_variant_id: v.external_variant_id || null,
+            color: v.color || null, size: v.size || null, color_hex: v.color_hex || null,
+            image_url: v.image || null, stock: v.stock ?? 0,
+          }).then(() => {}, () => {});
+          variantsInserted++;
+        }
+      }
+      // Enrich the cached raw (only when the detail actually carries variants), so
+      // the raw-based fallback path also works. Never clears existing images.
+      if (variants.length) {
+        await s.from("supplier_products").update({
+          raw: detail,
+          images: (detail.images && detail.images.length ? detail.images : sp.images),
+          updated_at: new Date().toISOString(),
+        }).eq("id", sp.id).then(() => {}, () => {});
+      }
+      synced++;
+      await slog(s, { supplier_id: supplierId, action: "sync_variants", status: "ok", error: `${variants.length} variants`, actor_id: actor?.id, actor_name: actor?.full_name });
+      await new Promise((r) => setTimeout(r, 250)); // gentle throttle for the CJ API
+    } catch (e) {
+      failed++; errors.push({ pid: sp.external_id, error: e.message });
+    }
+  }
+  return { ok: true, products: (prods || []).length, synced, failed, variantsUpdated, variantsInserted, errors: errors.slice(0, 25) };
 }
 
 // Place a supplier order for one of our orders (Order Engine).

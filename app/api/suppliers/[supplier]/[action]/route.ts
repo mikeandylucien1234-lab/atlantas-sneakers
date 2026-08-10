@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { requirePermission } from "@/lib/rbac/server";
 import { getAdapter } from "@/lib/suppliers/registry";
-import { importProduct, createSupplierOrder, syncTracking, syncInventory } from "@/lib/suppliers/engine";
+import { importProduct, createSupplierOrder, syncTracking, syncInventory, syncProductVariants } from "@/lib/suppliers/engine";
 import { logAudit } from "@/lib/audit/log";
 import { logActivity } from "@/lib/activity/log";
 import { ensureCreds, saveCreds, clearCreds, credsStatus } from "@/lib/suppliers/secrets";
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest, { params }) {
 
 export async function POST(request: NextRequest, { params }) {
   const { supplier, action } = await params;
-  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials"].includes(action) ? "products.manage" : "products.view";
+  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials", "sync-variants"].includes(action) ? "products.manage" : "products.view";
   const auth = await requirePermission(perm);
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
   const s = svc(); const actor = auth.profile; const b = await request.json().catch(() => ({})); const ip = ipOf(request);
@@ -165,6 +165,13 @@ export async function POST(request: NextRequest, { params }) {
       return Response.json(res);
     }
     if (action === "tracking") { const res = await syncTracking({ supplierId: supplier, supplierOrderId: b.supplier_order_id, trackingNumber: b.tracking_number, actor }); return Response.json(res); }
+    if (action === "sync-variants") {
+      // Fetch full CJ variant data (vid, variantSku, colour, size, image) for one
+      // product (b.product_id) or every imported product. Non-destructive.
+      const res = await syncProductVariants({ supplierId: supplier, productId: b.product_id || null, actor });
+      await logAudit({ actor, module: "products", submodule: "suppliers", action: "sync_variants", description: `${supplier}: ${res.synced}/${res.products} synced, ${res.variantsUpdated} updated, ${res.variantsInserted} inserted, ${res.failed} failed`, ip });
+      return Response.json(res);
+    }
     if (action === "pricing-rule") {
       if (b.op === "delete") { await s.from("supplier_pricing_rules").delete().eq("id", b.id); return Response.json({ ok: true }); }
       if (b.id) await s.from("supplier_pricing_rules").update({ name: b.name, rule_type: b.rule_type, value: b.value, rounding: b.rounding, min_profit: b.min_profit, max_discount: b.max_discount, enabled: b.enabled, is_default: b.is_default }).eq("id", b.id);

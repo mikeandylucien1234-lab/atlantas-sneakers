@@ -167,20 +167,25 @@ export async function dispatchSupplierOrders(orderId: string): Promise<void> {
     if (!mappings?.length) return; // no CJ-sourced items → nothing to dispatch
     const mapByProduct = new Map(mappings.map((m) => [m.imported_product_id, m]));
 
-    // Our variant SKUs for the ordered lines.
+    // Our variant SKUs + direct CJ ids for the ordered lines.
     const variantIds = oItems.map((i) => i.variant_id).filter(Boolean);
     const { data: pvs } = variantIds.length
-      ? await s.from("product_variants").select("id, sku").in("id", variantIds)
+      ? await s.from("product_variants").select("id, sku, external_variant_id").in("id", variantIds)
       : { data: [] as any[] };
-    const skuByVariant = new Map((pvs || []).map((v: any) => [v.id, v.sku]));
+    const pvById = new Map((pvs || []).map((v: any) => [v.id, v]));
 
-    // Resolve every CJ-sourced line to its exact CJ vid.
+    // Resolve every CJ-sourced line to its exact CJ vid. Prefer the authoritative
+    // product_variants.external_variant_id (set by import / variant sync); fall
+    // back to matching the SKU inside the cached CJ raw.
     const items: any[] = [];
     const errors: string[] = [];
     for (const it of oItems) {
       const m = mapByProduct.get(it.product_id);
       if (!m) continue; // not a CJ product — skip (e.g. mixed cart)
-      const ourSku = it.variant_id ? skuByVariant.get(it.variant_id) : null;
+      const pv = it.variant_id ? pvById.get(it.variant_id) : null;
+      const ourSku = pv?.sku ?? null;
+      const directVid = pv?.external_variant_id ?? null;
+      if (directVid) { items.push({ external_variant_id: directVid, quantity: it.quantity, sku: ourSku }); continue; }
       const r = resolveCjVariant(m, ourSku);
       if (r.error) { errors.push(r.error); continue; }
       items.push({ external_variant_id: r.vid, quantity: it.quantity, sku: ourSku });

@@ -280,6 +280,7 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
             <div className="flex flex-wrap gap-2 pt-1">
               <button onClick={() => setView("explorer")} className={btnPrimary}><PackageSearch className="w-3.5 h-3.5" /> Explore Products</button>
               <button onClick={() => post("/sync", { job_type: "inventory" }, (r) => r.ok ? `Synced ${r.updated || 0}` : r.message, () => setView("queue"))} disabled={busy === "/sync"} className={btnGhost}>{busy === "/sync" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Sync Inventory</button>
+              <button onClick={() => post("/sync-variants", {}, (r) => r.ok ? `Variants synced: ${r.synced}/${r.products} products · ${r.variantsUpdated} updated · ${r.variantsInserted} added${r.failed ? ` · ${r.failed} failed` : ""}` : r.message, loadOverview)} disabled={busy === "/sync-variants"} className={btnGhost} title="Fetch full CJ variant data (vid, SKU, colour, size, image) for all imported products">{busy === "/sync-variants" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Sync CJ Variants</button>
             </div>
           </div>
         </div>

@@ -301,7 +301,9 @@ export async function createSupplierOrder({ supplierId, order, items, actor }) {
   const s = svc();
   const adapter = getAdapter(supplierId);
   const { data: rec } = await s.from("supplier_orders").insert({ supplier_id: supplierId, order_id: order?.id || null, status: "pending", total: order?.total || 0 }).select("id").single();
-  const res = await adapter.createOrder({ orderNumber: order?.order_number, ...order?.shipping, items });
+  // Pass through an explicitly chosen logisticName (e.g. from the admin Retry) so
+  // the adapter uses exactly that value instead of re-deriving it.
+  const res = await adapter.createOrder({ orderNumber: order?.order_number, logisticName: order?.logisticName, ...order?.shipping, items });
   await s.from("supplier_orders").update({ external_order_id: res.external_order_id || null, status: res.ok ? "created" : "failed", error: res.ok ? null : res.message, raw: res.raw || null, updated_at: new Date().toISOString() }).eq("id", rec.id);
   await slog(s, { supplier_id: supplierId, action: "create_order", status: res.ok ? "ok" : "error", error: res.ok ? null : res.message, actor_id: actor?.id, actor_name: actor?.full_name });
   return { ok: res.ok, supplier_order_id: rec.id, external_order_id: res.external_order_id, message: res.message };

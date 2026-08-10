@@ -275,20 +275,29 @@ export class CJAdapter extends SupplierAdapter {
     const fromCountryCode = order.fromCountryCode || process.env.CJ_FROM_COUNTRY_CODE || "CN";
     try {
       // Resolve a real logistics method (CJ requires logisticName). Prefer an
-      // explicit one; otherwise pick the cheapest option CJ actually offers.
-      let logisticName = order.logisticName || null;
-      let logisticFrom = null;
+      // explicit one (e.g. the value shown/chosen in the admin); otherwise pick
+      // the cheapest option CJ actually offers. Trim to avoid stray whitespace.
+      let logisticName = (order.logisticName || "").toString().trim() || null;
+      let logisticFrom = logisticName ? "explicit" : null;
       if (!logisticName) {
         const opt = await this.getLogisticOptions({ fromCountryCode, toCountryCode: order.countryCode, zip: order.zip, products: order.items });
         if (opt.ok && opt.options.length) {
           const cheapest = opt.options.slice().sort((a, b) => (a.price ?? 1e9) - (b.price ?? 1e9))[0];
-          logisticName = cheapest.logisticName; logisticFrom = "freightCalculate";
+          logisticName = (cheapest.logisticName || "").toString().trim() || null; logisticFrom = "freightCalculate";
         }
       }
+
+      // SERVER-SIDE VALIDATION: never call CJ with an empty logisticName.
       if (!logisticName) {
-        return { ok: false, message: `No CJ logistics option available for ${order.countryCode || "(no country)"} — cannot set logisticName. Verify the shipping country/zip and that the products ship to this destination.` };
+        return { ok: false, message: `logisticName is empty — refusing to call CJ. No logistics option resolved for ${order.countryCode || "(no country)"}. Verify the shipping country/zip and that the products ship to this destination.` };
       }
-      const d = await cj("/shopping/order/createOrder", { method: "POST", body: {
+
+      const vids = (order.items || []).map(i => i.external_variant_id);
+      if (vids.some(v => !v)) {
+        return { ok: false, message: `Missing CJ variant id (vid) on one or more items — refusing to call CJ.` };
+      }
+
+      const payload = {
         orderNumber: order.orderNumber,
         fromCountryCode,
         shippingCountryCode: order.countryCode, shippingProvince: order.province,
@@ -296,7 +305,12 @@ export class CJAdapter extends SupplierAdapter {
         shippingZip: order.zip, shippingPhone: order.phone,
         logisticName, remark: "Atlanta Sneakers",
         products: (order.items || []).map(i => ({ vid: i.external_variant_id, quantity: i.quantity })),
-      } });
+      };
+      // Log the EXACT payload just before the CJ call, confirming logisticName is
+      // present (not undefined/null/"").
+      console.log("[CJ createOrder payload]", JSON.stringify({ ...payload, logisticNamePresent: !!payload.logisticName }));
+
+      const d = await cj("/shopping/order/createOrder", { method: "POST", body: payload });
       return { ok: true, external_order_id: d?.data?.orderId || d?.data?.orderNum, status: "created", logisticName, logisticFrom, raw: d?.data };
     } catch (e) { return { ok: false, message: e.message }; }
   }

@@ -155,7 +155,9 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   };
   const retrySync = async () => {
     const oid = syncDetail?.row?.order_id; if (!oid) return;
-    const r = await post("/retry-order", { order_id: oid }, (res) => res?.preview?.supplier_external_id ? `CJ order created: ${res.preview.supplier_external_id}` : (res?.preview?.blocking || "Retry attempted"), null);
+    // Send exactly the logistics value shown in the panel so CJ receives it.
+    const chosenLogistic = syncDetail?.preview?.logistic_name || undefined;
+    const r = await post("/retry-order", { order_id: oid, logistic_name: chosenLogistic }, (res) => res?.preview?.supplier_external_id ? `CJ order created: ${res.preview.supplier_external_id}` : (res?.preview?.blocking || "Retry attempted"), null);
     if (r?.preview) setSyncDetail((d) => ({ ...d, preview: r.preview }));
     if (view === "orders") sapi("/orders").then(res => setOrders(res.orders || [])).catch(() => {});
   };
@@ -401,7 +403,7 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
                   {field("Shipping country", p.shipping_country ? `${p.shipping_country}${p.shipping_country_code ? ` → ${p.shipping_country_code}` : " (no ISO match)"}` : "—")}
                   {field("From country code", p.from_country_code)}
                   {field("Logistics name", p.logistic_name || (p.logistic_error ? `— (${p.logistic_error})` : "—"))}
-                  {field("Full API error", syncDetail.row?.error || p.supplier_order?.error || "—")}
+                  {field("Full API error", p.supplier_order?.error || syncDetail.row?.error || "—")}
                   <button onClick={retrySync} disabled={busy === "/retry-order"} className={cn("w-full mt-4 h-[42px] rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 text-white", "bg-[#2563eb] hover:bg-[#1d4ed8] disabled:opacity-50")}>
                     {busy === "/retry-order" ? <><Loader2 className="w-4 h-4 animate-spin" /> Retrying…</> : <><RefreshCw className="w-4 h-4" /> Retry Sync</>}
                   </button>

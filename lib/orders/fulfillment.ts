@@ -146,7 +146,7 @@ function resolveCjVariant(mapping: any, ourSku: string | null): { vid?: string; 
 // an order that already has a CJ order id is never dispatched twice. Failures are
 // recorded on the order (fulfillment_status='error' + fulfillment_error) and in
 // supplier_orders so the admin sees exactly what went wrong.
-export async function dispatchSupplierOrders(orderId: string): Promise<void> {
+export async function dispatchSupplierOrders(orderId: string, opts: { logisticName?: string } = {}): Promise<void> {
   const s = (() => { try { return admin(); } catch { return null; } })();
   if (!s) { console.error("dispatchSupplierOrders: service role not configured"); return; }
   try {
@@ -211,7 +211,7 @@ export async function dispatchSupplierOrders(orderId: string): Promise<void> {
     };
 
     const { createSupplierOrder } = await import("@/lib/suppliers/engine");
-    const res = await createSupplierOrder({ supplierId: "cj", order: { ...order, shipping }, items, actor: null });
+    const res = await createSupplierOrder({ supplierId: "cj", order: { ...order, shipping, logisticName: opts.logisticName || null }, items, actor: null });
 
     if (res?.ok && res.external_order_id) {
       // Order status stays 'confirmed' (allowed set: pending/confirmed/shipped/

@@ -177,7 +177,7 @@ export async function POST(request: NextRequest, { params }) {
       if (!b.order_id) return Response.json({ error: "order_id required" }, { status: 400 });
       const { dispatchSupplierOrders } = await import("@/lib/orders/fulfillment");
       const { previewSupplierOrder } = await import("@/lib/suppliers/engine");
-      await dispatchSupplierOrders(b.order_id);
+      await dispatchSupplierOrders(b.order_id, { logisticName: b.logistic_name || undefined });
       const preview = await previewSupplierOrder({ supplierId: supplier, orderId: b.order_id });
       await logAudit({ actor, module: "orders", submodule: "suppliers", action: "retry_order", description: `${supplier}: ${b.order_id} → ${preview.supplier_external_id || preview.supplier_order?.status || "retried"}`, ip });
       return Response.json({ ok: true, preview });

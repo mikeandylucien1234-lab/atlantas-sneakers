@@ -58,6 +58,12 @@ export async function GET(request: NextRequest, { params }) {
       return Response.json({ products: data || [], total: count || 0, page, pageSize: size });
     }
     if (action === "orders") { const { data } = await s.from("supplier_orders").select("*").eq("supplier_id", supplier).order("created_at", { ascending: false }).limit(200); return Response.json({ orders: data || [] }); }
+    if (action === "order-preview") {
+      const orderId = sp.get("order_id");
+      if (!orderId) return Response.json({ error: "order_id required" }, { status: 400 });
+      const { previewSupplierOrder } = await import("@/lib/suppliers/engine");
+      return Response.json(await previewSupplierOrder({ supplierId: supplier, orderId }));
+    }
     if (action === "tracking") { const { data } = await s.from("supplier_tracking").select("*").order("updated_at", { ascending: false }).limit(200); return Response.json({ tracking: data || [] }); }
     if (action === "inventory") { const { data } = await s.from("supplier_inventory").select("*").eq("supplier_id", supplier).order("synced_at", { ascending: false }).limit(300); return Response.json({ inventory: data || [] }); }
     if (action === "categories") { const { data } = await s.from("supplier_categories").select("*").eq("supplier_id", supplier).order("external_category").limit(1000); return Response.json({ categories: data || [] }); }
@@ -83,7 +89,7 @@ export async function GET(request: NextRequest, { params }) {
 
 export async function POST(request: NextRequest, { params }) {
   const { supplier, action } = await params;
-  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials", "sync-variants"].includes(action) ? "products.manage" : "products.view";
+  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials", "sync-variants", "retry-order"].includes(action) ? "products.manage" : "products.view";
   const auth = await requirePermission(perm);
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
   const s = svc(); const actor = auth.profile; const b = await request.json().catch(() => ({})); const ip = ipOf(request);
@@ -165,6 +171,17 @@ export async function POST(request: NextRequest, { params }) {
       return Response.json(res);
     }
     if (action === "tracking") { const res = await syncTracking({ supplierId: supplier, supplierOrderId: b.supplier_order_id, trackingNumber: b.tracking_number, actor }); return Response.json(res); }
+    if (action === "retry-order") {
+      // Re-run the automatic dispatch for one Atlanta order (idempotent: skips if
+      // a CJ order id already exists). Returns the fresh preview so the modal updates.
+      if (!b.order_id) return Response.json({ error: "order_id required" }, { status: 400 });
+      const { dispatchSupplierOrders } = await import("@/lib/orders/fulfillment");
+      const { previewSupplierOrder } = await import("@/lib/suppliers/engine");
+      await dispatchSupplierOrders(b.order_id);
+      const preview = await previewSupplierOrder({ supplierId: supplier, orderId: b.order_id });
+      await logAudit({ actor, module: "orders", submodule: "suppliers", action: "retry_order", description: `${supplier}: ${b.order_id} → ${preview.supplier_external_id || preview.supplier_order?.status || "retried"}`, ip });
+      return Response.json({ ok: true, preview });
+    }
     if (action === "sync-variants") {
       // Fetch full CJ variant data (vid, variantSku, colour, size, image) for one
       // product (b.product_id) or every imported product. Non-destructive.

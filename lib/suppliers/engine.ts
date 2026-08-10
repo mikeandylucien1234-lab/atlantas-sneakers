@@ -5,6 +5,7 @@
 import { createClient as createAnon } from "@supabase/supabase-js";
 import { getAdapter } from "./registry";
 import { applyPricingRule, suggestComparePrice } from "./adapter";
+import { toCountryCode } from "@/lib/geo/country-codes";
 
 function svc() { return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } }); }
 function slugify(s) { return (s || "product").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }
@@ -225,6 +226,74 @@ export async function syncProductVariants({ supplierId = "cj", productId = null,
     }
   }
   return { ok: true, products: (prods || []).length, synced, failed, variantsUpdated, variantsInserted, errors: errors.slice(0, 25) };
+}
+
+// Resolve, WITHOUT sending anything to CJ, the exact data a dispatch would use:
+// CJ product id, CJ variant id, selected variant, shipping country + ISO code,
+// fromCountryCode, and the real CJ logistics options. Powers the admin
+// "Order Sync Details" panel. Never invents values.
+export async function previewSupplierOrder({ supplierId = "cj", orderId }) {
+  const s = svc();
+  const { data: order } = await s.from("orders").select("*").eq("id", orderId).maybeSingle();
+  if (!order) return { ok: false, error: "Order not found" };
+  const { data: oItems } = await s.from("order_items").select("product_id, variant_id, quantity").eq("order_id", orderId);
+  const productIds = [...new Set((oItems || []).map(i => i.product_id).filter(Boolean))];
+  const { data: maps } = await s.from("supplier_products").select("external_id, imported_product_id")
+    .eq("supplier_id", supplierId).eq("imported", true).in("imported_product_id", productIds.length ? productIds : ["_none_"]);
+  const mapByProduct = new Map((maps || []).map(m => [m.imported_product_id, m]));
+  const variantIds = (oItems || []).map(i => i.variant_id).filter(Boolean);
+  const { data: pvs } = variantIds.length
+    ? await s.from("product_variants").select("id, sku, color, size, external_variant_id").in("id", variantIds)
+    : { data: [] };
+  const pvById = new Map((pvs || []).map(v => [v.id, v]));
+
+  const items = (oItems || []).map(it => {
+    const m = mapByProduct.get(it.product_id);
+    const pv = it.variant_id ? pvById.get(it.variant_id) : null;
+    return {
+      product_id: it.product_id, cj_product_id: m?.external_id || null,
+      cj_variant_id: pv?.external_variant_id || null, sku: pv?.sku || null,
+      color: pv?.color || null, size: pv?.size || null, quantity: it.quantity,
+      resolved: !!(m && pv?.external_variant_id),
+    };
+  });
+
+  const addr = order.shipping_address || {};
+  const country = addr.country || null;
+  const countryCode = toCountryCode(country);
+  const fromCountryCode = process.env.CJ_FROM_COUNTRY_CODE || "CN";
+
+  const { data: so } = await s.from("supplier_orders").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+  // Real CJ logistics options (best-effort — needs resolved variants + country).
+  let logistic_options = [], logistic_error = null, logistic_name = null;
+  try {
+    if (countryCode && items.length && items.every(i => i.cj_variant_id)) {
+      const adapter = getAdapter(supplierId);
+      const r = await adapter.getLogisticOptions({ fromCountryCode, toCountryCode: countryCode, zip: addr.postalCode, products: items.map(i => ({ external_variant_id: i.cj_variant_id, quantity: i.quantity })) });
+      logistic_options = r.options || []; logistic_error = r.ok ? null : r.message;
+      if (logistic_options.length) logistic_name = logistic_options.slice().sort((a, b) => (a.price ?? 1e9) - (b.price ?? 1e9))[0].logisticName;
+    } else {
+      logistic_error = "Resolve variants and shipping country first";
+    }
+  } catch (e) { logistic_error = e.message; }
+
+  const unresolved = items.filter(i => !i.resolved).map(i => i.sku || i.product_id);
+  const blocking = unresolved.length ? `Unresolved CJ variant for SKU(s): ${unresolved.join(", ")}`
+    : !countryCode ? `Unrecognized shipping country: ${country || "(none)"}`
+    : !logistic_name ? (logistic_error || "No CJ logistics option for this destination")
+    : null;
+
+  return {
+    ok: true,
+    order_id: orderId, order_number: order.order_number,
+    fulfillment_status: order.fulfillment_status, supplier_external_id: order.supplier_external_id,
+    shipping_country: country, shipping_country_code: countryCode, from_country_code: fromCountryCode,
+    logistic_name, logistic_options, logistic_error,
+    items,
+    supplier_order: so ? { id: so.id, status: so.status, error: so.error, external_order_id: so.external_order_id, created_at: so.created_at } : null,
+    blocking,
+  };
 }
 
 // Place a supplier order for one of our orders (Order Engine).

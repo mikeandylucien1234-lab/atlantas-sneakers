@@ -64,6 +64,8 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   const [wizStep, setWizStep] = useState(0);
   const [queue, setQueue] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [syncDetail, setSyncDetail] = useState(null);   // { row, preview } for the Order Sync Details modal
+  const [syncLoading, setSyncLoading] = useState(false);
   const [inventory, setInventory] = useState([]);
   const [pricing, setPricing] = useState([]);
   const [cats, setCats] = useState([]);
@@ -139,6 +141,23 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
     setBusy(path);
     try { const r = await sapi(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }); if (okMsg) showToast(typeof okMsg === "function" ? okMsg(r) : okMsg); if (after) await after(r); return r; }
     catch (e) { showToast(e.message, "error"); } finally { setBusy(null); }
+  };
+
+  // Open the Order Sync Details panel for a supplier order row (resolves the exact
+  // CJ payload: product/variant ids, shipping country, fromCountryCode, logistics).
+  const openSyncDetail = async (row) => {
+    if (!row?.order_id) { showToast("This supplier order isn't linked to a store order.", "warn"); return; }
+    setSyncDetail({ row, preview: null });
+    setSyncLoading(true);
+    try { const preview = await sapi(`/order-preview?order_id=${row.order_id}`); setSyncDetail({ row, preview }); }
+    catch (e) { showToast(e.message, "error"); setSyncDetail({ row, preview: { ok: false, error: e.message } }); }
+    finally { setSyncLoading(false); }
+  };
+  const retrySync = async () => {
+    const oid = syncDetail?.row?.order_id; if (!oid) return;
+    const r = await post("/retry-order", { order_id: oid }, (res) => res?.preview?.supplier_external_id ? `CJ order created: ${res.preview.supplier_external_id}` : (res?.preview?.blocking || "Retry attempted"), null);
+    if (r?.preview) setSyncDetail((d) => ({ ...d, preview: r.preview }));
+    if (view === "orders") sapi("/orders").then(res => setOrders(res.orders || [])).catch(() => {});
   };
 
   const search = async (page = 1) => {
@@ -325,15 +344,73 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
       {/* ORDERS */}
       {view === "orders" && (
         <div className={cn(cardCls, "overflow-hidden")}>
-          <div className="overflow-x-auto"><table className="w-full text-sm">
-            <thead><tr className={cn("border-b text-left", brd, sub)}>{["External ID", "Our Order", "Status", "Total", "Error", "Created"].map(h => <th key={h} className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider">{h}</th>)}</tr></thead>
+          <p className={cn("px-3 pt-3 text-[11px]", sub)}>Tap any order to see the full sync details and retry.</p>
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[760px]">
+            <thead><tr className={cn("border-b text-left", brd, sub)}>{["External ID", "Our Order", "Status", "Total", "Error", "Created", ""].map(h => <th key={h} className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">{h}</th>)}</tr></thead>
             <tbody className={cn("divide-y", divide)}>
-              {orders.length === 0 ? <tr><td colSpan={6} className={cn("px-4 py-8 text-center text-xs", sub)}>No supplier orders yet. They're created automatically when customers order imported products.</td></tr> :
-                orders.map(o => <tr key={o.id}><td className={cn("px-3 py-2.5 font-mono text-[11px]", txt)}>{o.external_order_id || "—"}</td><td className={cn("px-3 py-2.5", sub)}>{o.order_id || "—"}</td><td className="px-3 py-2.5"><span className="text-[10px] px-2 py-0.5 rounded-full font-bold capitalize" style={{ backgroundColor: o.status === "created" ? "#16a34a1a" : o.status === "failed" ? "#dc26261a" : "#8a929c1a", color: o.status === "created" ? "#16a34a" : o.status === "failed" ? "#dc2626" : "#8a929c" }}>{o.status}</span></td><td className={cn("px-3 py-2.5", txt)}>${(Number(o.total) || 0).toFixed(2)}</td><td className={cn("px-3 py-2.5 text-[11px] text-red-500 truncate max-w-[160px]")}>{o.error || ""}</td><td className={cn("px-3 py-2.5 text-[11px]", sub)}>{fmtDT(o.created_at)}</td></tr>)}
+              {orders.length === 0 ? <tr><td colSpan={7} className={cn("px-4 py-8 text-center text-xs", sub)}>No supplier orders yet. They're created automatically when customers order imported products.</td></tr> :
+                orders.map(o => <tr key={o.id} onClick={() => openSyncDetail(o)} className={cn("cursor-pointer transition-colors", dark ? "hover:bg-[#1b222c]" : "hover:bg-[#f7f8fa]")}>
+                  <td className={cn("px-3 py-2.5 font-mono text-[11px] whitespace-nowrap", txt)}>{o.external_order_id || "—"}</td>
+                  <td className={cn("px-3 py-2.5 font-mono text-[11px] whitespace-nowrap", sub)}>{o.order_id ? o.order_id.slice(0, 8) + "…" : "—"}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap"><span className="text-[10px] px-2 py-0.5 rounded-full font-bold capitalize" style={{ backgroundColor: o.status === "created" ? "#16a34a1a" : o.status === "failed" ? "#dc26261a" : "#8a929c1a", color: o.status === "created" ? "#16a34a" : o.status === "failed" ? "#dc2626" : "#8a929c" }}>{o.status}</span></td>
+                  <td className={cn("px-3 py-2.5 whitespace-nowrap", txt)}>${(Number(o.total) || 0).toFixed(2)}</td>
+                  <td className={cn("px-3 py-2.5 text-[11px] text-red-500 truncate max-w-[200px]")} title={o.error || ""}>{o.error || "—"}</td>
+                  <td className={cn("px-3 py-2.5 text-[11px] whitespace-nowrap", sub)}>{fmtDT(o.created_at)}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap"><span className="text-[11px] font-bold text-[#2563eb]">Details ›</span></td>
+                </tr>)}
             </tbody>
           </table></div>
         </div>
       )}
+
+      {/* ORDER SYNC DETAILS MODAL */}
+      {syncDetail && (() => {
+        const p = syncDetail.preview;
+        const field = (label, value, mono) => (
+          <div className="flex items-start justify-between gap-3 py-2 border-b" style={{ borderColor: dark ? "#252c36" : "#eef0f3" }}>
+            <span className={cn("text-[11px] font-semibold uppercase tracking-wide shrink-0", sub)}>{label}</span>
+            <span className={cn("text-[12px] text-right break-all", mono && "font-mono", txt)}>{value ?? "—"}</span>
+          </div>
+        );
+        return (
+          <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={() => setSyncDetail(null)}>
+            <div className={cn("w-full sm:max-w-[520px] max-h-[88vh] overflow-y-auto rounded-t-[18px] sm:rounded-[18px] p-5", dark ? "bg-[#12171e]" : "bg-white")} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <p className={cn("text-[15px] font-extrabold", txt)}>Order Sync Details</p>
+                <button onClick={() => setSyncDetail(null)} className={cn("p-1.5 rounded-lg", sub)}><X className="w-4 h-4" /></button>
+              </div>
+              {syncLoading || !p ? (
+                <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-[#2563eb]" /></div>
+              ) : !p.ok ? (
+                <p className="text-[13px] text-red-500">{p.error || "Failed to load details."}</p>
+              ) : (
+                <>
+                  {p.blocking && <div className="mb-3 rounded-[10px] px-3 py-2 text-[12px] font-semibold" style={{ backgroundColor: "#dc26261a", color: "#dc2626" }}>{p.blocking}</div>}
+                  {p.supplier_external_id && <div className="mb-3 rounded-[10px] px-3 py-2 text-[12px] font-semibold" style={{ backgroundColor: "#16a34a1a", color: "#16a34a" }}>CJ Order ID: {p.supplier_external_id}</div>}
+                  {field("Order ID", p.order_number || p.order_id, true)}
+                  {field("Supplier order status", syncDetail.row?.status)}
+                  {(p.items || []).map((it, i) => (
+                    <div key={i} className="mt-2">
+                      {field(`Item ${i + 1} — CJ Product ID`, it.cj_product_id, true)}
+                      {field("CJ Variant ID (vid)", it.cj_variant_id, true)}
+                      {field("Selected variant", [it.color, it.size].filter(Boolean).join(" · ") + (it.sku ? `  (${it.sku})` : ""))}
+                      {field("Qty", it.quantity)}
+                      {!it.resolved && <div className="text-[11px] text-red-500 pb-1">⚠ Variant not resolved to CJ — run “Sync CJ Variants”.</div>}
+                    </div>
+                  ))}
+                  {field("Shipping country", p.shipping_country ? `${p.shipping_country}${p.shipping_country_code ? ` → ${p.shipping_country_code}` : " (no ISO match)"}` : "—")}
+                  {field("From country code", p.from_country_code)}
+                  {field("Logistics name", p.logistic_name || (p.logistic_error ? `— (${p.logistic_error})` : "—"))}
+                  {field("Full API error", syncDetail.row?.error || p.supplier_order?.error || "—")}
+                  <button onClick={retrySync} disabled={busy === "/retry-order"} className={cn("w-full mt-4 h-[42px] rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 text-white", "bg-[#2563eb] hover:bg-[#1d4ed8] disabled:opacity-50")}>
+                    {busy === "/retry-order" ? <><Loader2 className="w-4 h-4 animate-spin" /> Retrying…</> : <><RefreshCw className="w-4 h-4" /> Retry Sync</>}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* INVENTORY */}
       {view === "inventory" && (

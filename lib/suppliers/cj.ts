@@ -250,21 +250,54 @@ export class CJAdapter extends SupplierAdapter {
     } catch (e) { return { ok: false, message: e.message }; }
   }
 
+  // Real CJ logistics options for a destination + products. CJ requires a
+  // logisticName on createOrder; we pick a REAL available one (never invented).
+  async getLogisticOptions({ fromCountryCode, toCountryCode, zip, products } = {}) {
+    await this.hydrate();
+    if (!this.isConfigured()) return { ok: false, options: [], message: "CJ not connected." };
+    try {
+      const d = await cj("/logistic/freightCalculate", { method: "POST", body: {
+        startCountryCode: fromCountryCode || process.env.CJ_FROM_COUNTRY_CODE || "CN",
+        endCountryCode: toCountryCode,
+        zip: zip || undefined,
+        products: (products || []).map(p => ({ quantity: p.quantity, vid: p.external_variant_id })),
+      } });
+      const options = (d?.data || []).map(o => ({
+        logisticName: o.logisticName || o.logisticsName, price: Number(o.logisticPrice) || null, aging: o.logisticAging || null,
+      })).filter(o => o.logisticName);
+      return { ok: true, options };
+    } catch (e) { return { ok: false, options: [], message: e.message }; }
+  }
+
   async createOrder(order) {
     await this.hydrate();
     if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    const fromCountryCode = order.fromCountryCode || process.env.CJ_FROM_COUNTRY_CODE || "CN";
     try {
+      // Resolve a real logistics method (CJ requires logisticName). Prefer an
+      // explicit one; otherwise pick the cheapest option CJ actually offers.
+      let logisticName = order.logisticName || null;
+      let logisticFrom = null;
+      if (!logisticName) {
+        const opt = await this.getLogisticOptions({ fromCountryCode, toCountryCode: order.countryCode, zip: order.zip, products: order.items });
+        if (opt.ok && opt.options.length) {
+          const cheapest = opt.options.slice().sort((a, b) => (a.price ?? 1e9) - (b.price ?? 1e9))[0];
+          logisticName = cheapest.logisticName; logisticFrom = "freightCalculate";
+        }
+      }
+      if (!logisticName) {
+        return { ok: false, message: `No CJ logistics option available for ${order.countryCode || "(no country)"} — cannot set logisticName. Verify the shipping country/zip and that the products ship to this destination.` };
+      }
       const d = await cj("/shopping/order/createOrder", { method: "POST", body: {
         orderNumber: order.orderNumber,
-        // Warehouse the goods ship FROM — CJ requires this. Defaults to CN (CJ's
-        // primary warehouse); override per-deployment with CJ_FROM_COUNTRY_CODE.
-        fromCountryCode: order.fromCountryCode || process.env.CJ_FROM_COUNTRY_CODE || "CN",
+        fromCountryCode,
         shippingCountryCode: order.countryCode, shippingProvince: order.province,
         shippingCity: order.city, shippingAddress: order.address, shippingCustomerName: order.name,
-        shippingZip: order.zip, shippingPhone: order.phone, remark: "Atlanta Sneakers",
+        shippingZip: order.zip, shippingPhone: order.phone,
+        logisticName, remark: "Atlanta Sneakers",
         products: (order.items || []).map(i => ({ vid: i.external_variant_id, quantity: i.quantity })),
       } });
-      return { ok: true, external_order_id: d?.data?.orderId || d?.data?.orderNum, status: "created", raw: d?.data };
+      return { ok: true, external_order_id: d?.data?.orderId || d?.data?.orderNum, status: "created", logisticName, logisticFrom, raw: d?.data };
     } catch (e) { return { ok: false, message: e.message }; }
   }
 

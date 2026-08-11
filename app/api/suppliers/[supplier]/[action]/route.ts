@@ -89,7 +89,7 @@ export async function GET(request: NextRequest, { params }) {
 
 export async function POST(request: NextRequest, { params }) {
   const { supplier, action } = await params;
-  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials", "sync-variants", "retry-order"].includes(action) ? "products.manage" : "products.view";
+  const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials", "sync-variants", "retry-order", "pay-order", "auto-pay"].includes(action) ? "products.manage" : "products.view";
   const auth = await requirePermission(perm);
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
   const s = svc(); const actor = auth.profile; const b = await request.json().catch(() => ({})); const ip = ipOf(request);
@@ -181,6 +181,27 @@ export async function POST(request: NextRequest, { params }) {
       const preview = await previewSupplierOrder({ supplierId: supplier, orderId: b.order_id });
       await logAudit({ actor, module: "orders", submodule: "suppliers", action: "retry_order", description: `${supplier}: ${b.order_id} → ${preview.supplier_external_id || preview.supplier_order?.status || "retried"}`, ip });
       return Response.json({ ok: true, preview });
+    }
+    if (action === "pay-order") {
+      // Manual "Pay CJ Order" — the ONLY way a real payment starts unless auto-pay
+      // is enabled. Same guarded flow (no double payment, CJ-confirmed only).
+      if (!b.order_id) return Response.json({ error: "order_id required" }, { status: 400 });
+      const { paySupplierOrder, previewSupplierOrder } = await import("@/lib/suppliers/engine");
+      const result = await paySupplierOrder({ supplierId: supplier, orderId: b.order_id, actor });
+      const preview = await previewSupplierOrder({ supplierId: supplier, orderId: b.order_id });
+      await logAudit({ actor, module: "orders", submodule: "suppliers", action: "pay_order", description: `${supplier}: ${b.order_id} → ${result.payment_status || (result.ok ? "paid" : "failed")} ${result.error || ""}`.trim(), ip });
+      return Response.json({ ...result, preview });
+    }
+    if (action === "auto-pay") {
+      // Toggle / read the CJ Auto Pay flag (stored in supplier_connections.config).
+      const { data: conn } = await s.from("supplier_connections").select("config").eq("supplier_id", supplier).maybeSingle();
+      const cfg = conn?.config || {};
+      if (typeof b.enabled === "boolean") {
+        cfg.cj_auto_pay = b.enabled;
+        await s.from("supplier_connections").update({ config: cfg, updated_at: new Date().toISOString() }).eq("supplier_id", supplier);
+        await logAudit({ actor, module: "settings", submodule: "suppliers", action: "cj_auto_pay", description: `${supplier}: auto-pay ${b.enabled ? "ON" : "OFF"}`, ip });
+      }
+      return Response.json({ ok: true, cj_auto_pay: cfg.cj_auto_pay === true });
     }
     if (action === "sync-variants") {
       // Fetch full CJ variant data (vid, variantSku, colour, size, image) for one

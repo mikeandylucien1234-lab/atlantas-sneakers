@@ -263,7 +263,20 @@ export async function previewSupplierOrder({ supplierId = "cj", orderId }) {
   const countryCode = toCountryCode(country);
   const fromCountryCode = process.env.CJ_FROM_COUNTRY_CODE || "CN";
 
-  const { data: so } = await s.from("supplier_orders").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  // Prefer the supplier order that actually has a CJ id (the placed one).
+  const { data: soWithId } = await s.from("supplier_orders").select("*").eq("order_id", orderId).not("external_order_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const { data: soLatest } = await s.from("supplier_orders").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const so = soWithId || soLatest;
+
+  // Live CJ payment/fulfillment state (read-only — never triggers a payment).
+  let cj_order_status = null, cj_payment_date = null, cj_amount_to_pay = null;
+  if (so?.external_order_id) {
+    try {
+      const adapter = getAdapter(supplierId);
+      const info = await adapter.getOrderPaymentInfo(so.external_order_id);
+      if (info?.ok) { cj_order_status = info.orderStatus; cj_payment_date = info.paymentDate; cj_amount_to_pay = info.orderAmount; }
+    } catch { /* best-effort */ }
+  }
 
   // Real CJ logistics options (best-effort — needs resolved variants + country).
   let logistic_options = [], logistic_error = null, logistic_name = null;
@@ -292,8 +305,67 @@ export async function previewSupplierOrder({ supplierId = "cj", orderId }) {
     logistic_name, logistic_options, logistic_error,
     items,
     supplier_order: so ? { id: so.id, status: so.status, error: so.error, external_order_id: so.external_order_id, created_at: so.created_at } : null,
+    // Payment view — the real CJ id, the amount owed to CJ, live CJ status +
+    // paymentDate, and our local payment_status. "paid" only when CJ confirms.
+    cj_order_id: so?.external_order_id || order.supplier_external_id || null,
+    payment_status: so?.payment_status || "unpaid",
+    paid_amount: so?.paid_amount ?? null,
+    paid_at: so?.paid_at ?? null,
+    payment_error: so?.payment_error ?? null,
+    cj_order_status, cj_payment_date, cj_amount_to_pay,
     blocking,
   };
+}
+
+// THE single, guarded CJ wallet-payment flow (used by BOTH auto-pay and the
+// manual "Pay CJ Order" button). Never pays twice, never marks paid without CJ
+// confirming paymentDate, uses the REAL CJ order id, records everything.
+export async function paySupplierOrder({ supplierId = "cj", orderId, actor = null } = {}) {
+  const s = svc();
+  const { data: so } = await s.from("supplier_orders").select("*")
+    .eq("order_id", orderId).eq("supplier_id", supplierId)
+    .not("external_order_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!so || !so.external_order_id) return { ok: false, error: "No CJ order id for this order — create the CJ order first." };
+  const cjId = so.external_order_id; // REAL CJ id, never AS-…
+
+  // Guard 1 — already paid locally.
+  if (so.payment_status === "paid" || so.paid_at) return { ok: true, already: true, payment_status: "paid", cj_order_id: cjId, paid_at: so.paid_at, paid_amount: so.paid_amount };
+  // Guard 2 — a payment is already in flight.
+  if (so.payment_status === "paying") return { ok: false, error: "A payment is already in progress for this CJ order." };
+
+  const adapter = getAdapter(supplierId);
+
+  // Guard 3 — source of truth: is CJ already paid? (never double-pay)
+  const pre = await adapter.getOrderPaymentInfo(cjId);
+  if (pre?.ok && pre.paymentDate) {
+    await s.from("supplier_orders").update({ payment_status: "paid", paid_at: new Date(pre.paymentDate).toISOString(), paid_amount: pre.orderAmount ?? so.total, payment_raw: pre.raw || null, payment_error: null }).eq("id", so.id);
+    return { ok: true, already: true, payment_status: "paid", cj_order_id: cjId, paid_amount: pre.orderAmount ?? so.total };
+  }
+
+  // Soft lock.
+  await s.from("supplier_orders").update({ payment_status: "paying", payment_error: null }).eq("id", so.id);
+  await slog(s, { supplier_id: supplierId, action: "pay_order", status: "ok", error: `paying ${cjId}`, actor_id: actor?.id, actor_name: actor?.full_name });
+
+  const pay = await adapter.payOrder({ orderId: cjId });
+
+  // Confirm via CJ regardless of the pay response — mark paid ONLY if paymentDate.
+  const post = await adapter.getOrderPaymentInfo(cjId);
+  const paymentDate = post?.ok ? post.paymentDate : null;
+
+  if (paymentDate) {
+    await s.from("supplier_orders").update({
+      payment_status: "paid", paid_at: new Date(paymentDate).toISOString(),
+      paid_amount: post.orderAmount ?? so.total, payment_raw: pay.rawResponse || post.raw || null, payment_error: null,
+    }).eq("id", so.id);
+    await slog(s, { supplier_id: supplierId, action: "pay_order", status: "ok", error: `paid ${cjId}` });
+    return { ok: true, payment_status: "paid", cj_order_id: cjId, paid_amount: post.orderAmount ?? so.total, order_status: post.orderStatus };
+  }
+
+  // Not confirmed → failed. Leave unpaid, never ship.
+  const msg = pay.ok ? "CJ did not confirm payment (paymentDate still empty) — verify wallet/order." : (pay.message || "CJ payment failed");
+  await s.from("supplier_orders").update({ payment_status: "failed", payment_error: msg, payment_raw: pay.rawResponse || null }).eq("id", so.id);
+  await slog(s, { supplier_id: supplierId, action: "pay_order", status: "error", error: msg });
+  return { ok: false, payment_status: "failed", error: msg, cj_order_id: cjId };
 }
 
 // Place a supplier order for one of our orders (Order Engine).

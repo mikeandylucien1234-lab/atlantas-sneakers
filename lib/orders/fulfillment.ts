@@ -248,6 +248,17 @@ export async function dispatchSupplierOrders(orderId: string, opts: { logisticNa
         fulfillment_status: "submitted", supplier_external_id: String(res.external_order_id),
         fulfillment_error: null,
       }).eq("id", orderId);
+
+      // AUTO-PAY (OFF by default). Only pays when the admin has enabled
+      // cj_auto_pay. Uses the single guarded flow — never double-pays, never
+      // ships on failure. Non-blocking: a payment failure never breaks the order.
+      try {
+        const { data: conn } = await s.from("supplier_connections").select("config").eq("supplier_id", "cj").maybeSingle();
+        if (conn?.config?.cj_auto_pay === true) {
+          const { paySupplierOrder } = await import("@/lib/suppliers/engine");
+          await paySupplierOrder({ orderId });
+        }
+      } catch (e) { console.error("auto-pay skipped:", e); }
     } else {
       await s.from("orders").update({ fulfillment_status: "error", fulfillment_error: res?.message || "CJ order creation failed" }).eq("id", orderId);
     }

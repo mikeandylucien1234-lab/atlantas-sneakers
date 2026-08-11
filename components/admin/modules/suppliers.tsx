@@ -9,6 +9,7 @@ import {
   ShoppingCart, Warehouse, DollarSign, Truck, FolderTree, ScrollText, Activity,
   Loader2, X, Plus, RefreshCw, PlugZap, Power, Download, CheckCircle2, XCircle,
   AlertTriangle, ChevronRight, ChevronLeft, Copy, Trash2, Package, Image as ImageIcon,
+  CreditCard,
 } from "lucide-react";
 
 type Props = { dark: boolean; initialView?: string; focusSupplier?: string };
@@ -66,6 +67,7 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   const [orders, setOrders] = useState([]);
   const [syncDetail, setSyncDetail] = useState(null);   // { row, preview } for the Order Sync Details modal
   const [syncLoading, setSyncLoading] = useState(false);
+  const [autoPay, setAutoPay] = useState(false);        // CJ Auto Pay flag (OFF by default)
   const [inventory, setInventory] = useState([]);
   const [pricing, setPricing] = useState([]);
   const [cats, setCats] = useState([]);
@@ -124,10 +126,18 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
   const loadSuppliers = useCallback(async () => { try { const r = await api("/suppliers?section=list"); setSuppliers(r.suppliers || []); } catch {} }, [api]);
   const [overviewErr, setOverviewErr] = useState(null);
   const loadOverview = useCallback(async () => { setOverviewErr(null); try { setOverview(await sapi("/overview")); } catch (e) { setOverviewErr(e.message || "Failed to load"); } }, [sapi]);
+  // Read current CJ Auto Pay flag (no change) — POST with no `enabled` returns it.
+  const loadAutoPay = useCallback(async () => { try { const r = await sapi("/auto-pay", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); setAutoPay(!!r?.cj_auto_pay); } catch {} }, [sapi]);
+  const toggleAutoPay = async () => {
+    const next = !autoPay;
+    if (next && !confirm("Enable CJ Auto Pay? Future orders will be paid automatically from your CJ Wallet after the CJ order is created. This spends real money.")) return;
+    const r = await post("/auto-pay", { enabled: next }, (res) => `CJ Auto Pay ${res?.cj_auto_pay ? "ON" : "OFF"}`, null);
+    if (r) setAutoPay(!!r.cj_auto_pay);
+  };
 
   useEffect(() => { (async () => { setLoading(true); await Promise.all([loadDash(), loadSuppliers()]); setLoading(false); })(); }, [loadDash, loadSuppliers]);
   useEffect(() => {
-    if (view === "dashboard") loadDash(); if (view === "suppliers") loadSuppliers(); if (view === "supplier") loadOverview();
+    if (view === "dashboard") loadDash(); if (view === "suppliers") loadSuppliers(); if (view === "supplier") { loadOverview(); loadAutoPay(); }
     if (view === "queue") sapi("/queue").then(r => setQueue(r.jobs || [])).catch(() => {});
     if (view === "orders") sapi("/orders").then(r => setOrders(r.orders || [])).catch(() => {});
     if (view === "inventory") sapi("/inventory").then(r => setInventory(r.inventory || [])).catch(() => {});
@@ -153,6 +163,17 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
     catch (e) { showToast(e.message, "error"); setSyncDetail({ row, preview: { ok: false, error: e.message } }); }
     finally { setSyncLoading(false); }
   };
+  // Manual CJ payment — the ONLY way a real payment starts here. Confirms first.
+  const payCjOrder = async () => {
+    const oid = syncDetail?.row?.order_id; const p = syncDetail?.preview; if (!oid) return;
+    if (p?.payment_status === "paid") { showToast("This CJ order is already paid.", "info"); return; }
+    const amount = p?.cj_amount_to_pay ?? p?.supplier_order?.total;
+    if (!confirm(`Pay CJ order ${p?.cj_order_id || ""} from your CJ Wallet${amount ? ` (~$${Number(amount).toFixed(2)})` : ""}? This spends real money from your CJ balance.`)) return;
+    const r = await post("/pay-order", { order_id: oid }, (res) => res?.payment_status === "paid" ? "CJ order PAID ✓" : (res?.error || "Payment not confirmed"), null);
+    if (r?.preview) setSyncDetail((d) => ({ ...d, preview: r.preview }));
+    if (view === "orders") sapi("/orders").then(res => setOrders(res.orders || [])).catch(() => {});
+  };
+
   const retrySync = async () => {
     const oid = syncDetail?.row?.order_id; if (!oid) return;
     // Send exactly the logistics value shown in the panel so CJ receives it.
@@ -302,6 +323,9 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
               <button onClick={() => setView("explorer")} className={btnPrimary}><PackageSearch className="w-3.5 h-3.5" /> Explore Products</button>
               <button onClick={() => post("/sync", { job_type: "inventory" }, (r) => r.ok ? `Synced ${r.updated || 0}` : r.message, () => setView("queue"))} disabled={busy === "/sync"} className={btnGhost}>{busy === "/sync" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Sync Inventory</button>
               <button onClick={() => post("/sync-variants", {}, (r) => r.ok ? `Variants synced: ${r.synced}/${r.products} products · ${r.variantsUpdated} updated · ${r.variantsInserted} added${r.failed ? ` · ${r.failed} failed` : ""}` : r.message, loadOverview)} disabled={busy === "/sync-variants"} className={btnGhost} title="Fetch full CJ variant data (vid, SKU, colour, size, image) for all imported products">{busy === "/sync-variants" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Sync CJ Variants</button>
+              <button onClick={toggleAutoPay} disabled={busy === "/auto-pay"} title="When ON, orders are paid automatically from your CJ Wallet after the CJ order is created" className={cn(btnGhost, autoPay && "text-emerald-600")}>
+                <CreditCard className="w-3.5 h-3.5" /> CJ Auto Pay: {autoPay ? "ON" : "OFF"}
+              </button>
             </div>
           </div>
         </div>
@@ -404,7 +428,31 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
                   {field("From country code", p.from_country_code)}
                   {field("Logistics name", p.logistic_name || (p.logistic_error ? `— (${p.logistic_error})` : "—"))}
                   {field("Full API error", p.supplier_order?.error || syncDetail.row?.error || "—")}
-                  <button onClick={retrySync} disabled={busy === "/retry-order"} className={cn("w-full mt-4 h-[42px] rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 text-white", "bg-[#2563eb] hover:bg-[#1d4ed8] disabled:opacity-50")}>
+
+                  {/* ── CJ PAYMENT ── */}
+                  {p.cj_order_id && (
+                    <div className="mt-3 pt-2">
+                      <p className={cn("text-[11px] font-bold uppercase tracking-wide mb-1", sub)}>CJ Payment</p>
+                      {field("CJ Order ID", p.cj_order_id, true)}
+                      {field("Amount to pay CJ", p.cj_amount_to_pay != null ? `$${Number(p.cj_amount_to_pay).toFixed(2)}` : (p.supplier_order?.total != null ? `$${Number(p.supplier_order.total).toFixed(2)}` : "—"))}
+                      {field("CJ order status", p.cj_order_status || "—")}
+                      {field("CJ paymentDate", p.cj_payment_date || "— (unpaid)")}
+                      {field("Payment status (our DB)", (p.payment_status || "unpaid").toUpperCase())}
+                      {p.paid_at && field("Paid at", p.paid_at)}
+                      {p.payment_error && <div className="text-[11px] text-red-500 py-1">{p.payment_error}</div>}
+                      <button
+                        onClick={payCjOrder}
+                        disabled={busy === "/pay-order" || p.payment_status === "paid" || p.payment_status === "paying"}
+                        className={cn("w-full mt-3 h-[42px] rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2 text-white disabled:opacity-50",
+                          p.payment_status === "paid" ? "bg-[#16a34a]" : "bg-[#ea7317] hover:bg-[#d96a13]")}>
+                        {busy === "/pay-order" ? <><Loader2 className="w-4 h-4 animate-spin" /> Paying…</>
+                          : p.payment_status === "paid" ? <>✓ Paid</>
+                          : <><CreditCard className="w-4 h-4" /> Pay CJ Order</>}
+                      </button>
+                    </div>
+                  )}
+
+                  <button onClick={retrySync} disabled={busy === "/retry-order"} className={cn("w-full mt-3 h-[42px] rounded-[12px] font-bold text-[13px] flex items-center justify-center gap-2", dark ? "bg-[#1b222c] text-[#e7ebf0]" : "bg-[#eef1f5] text-[#16181d]", "disabled:opacity-50")}>
                     {busy === "/retry-order" ? <><Loader2 className="w-4 h-4 animate-spin" /> Retrying…</> : <><RefreshCw className="w-4 h-4" /> Retry Sync</>}
                   </button>
                 </>

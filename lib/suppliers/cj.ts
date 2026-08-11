@@ -373,6 +373,64 @@ export class CJAdapter extends SupplierAdapter {
     } catch (e) { return { ok: false, message: e.message }; }
   }
 
+  // Authoritative payment/fulfillment state for a CJ order, read from the order
+  // list (confirmed to expose orderStatus / paymentDate / orderAmount / trackNumber).
+  async getOrderPaymentInfo(cjOrderId) {
+    await this.hydrate();
+    if (!this.isConfigured() || !cjOrderId) return { ok: false };
+    try {
+      const d = await cj("/shopping/order/list", { query: { pageNum: 1, pageSize: 100 } });
+      const list = d?.data?.list || (Array.isArray(d?.data) ? d.data : []);
+      const m = (list || []).find(o => String(o.orderId) === String(cjOrderId) || String(o.cjOrderId) === String(cjOrderId));
+      if (!m) return { ok: false, rawResponse: d };
+      return {
+        ok: true,
+        orderStatus: m.orderStatus ?? null,
+        paymentDate: m.paymentDate ?? null,
+        orderAmount: m.orderAmount ?? null,
+        productAmount: m.productAmount ?? null,
+        postageAmount: m.postageAmount ?? null,
+        trackNumber: m.trackNumber ?? null,
+        raw: m,
+      };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  // Read the CJ wallet balance (best-effort; endpoint validated live via logs).
+  async getWalletBalance() {
+    await this.hydrate();
+    if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    try {
+      const d = await cj("/shopping/pay/getBalance", {});
+      console.log("[CJ getBalance response]", JSON.stringify(d));
+      const bal = d?.data?.amount ?? d?.data?.balance ?? (typeof d?.data === "number" ? d.data : null);
+      return { ok: true, balance: bal, rawResponse: d };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  // Pay a CREATED CJ order from the wallet balance. ONE call only (no retry loop)
+  // so a payment can never be duplicated; the full response is logged/returned and
+  // the caller confirms via getOrderPaymentInfo (paymentDate) — never trusts this
+  // response alone. `orderId` MUST be the real CJ order id (not our AS-… number).
+  async payOrder({ orderId, orderType = 2 } = {}) {
+    await this.hydrate();
+    if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    if (!orderId) return { ok: false, message: "Missing CJ order id — refusing to pay." };
+    try {
+      const body = { shipmentOrderId: String(orderId), orderId: String(orderId), orderType };
+      console.log("[CJ payOrder request]", JSON.stringify(body));
+      const d = await cj("/shopping/pay/payBalanceV2", { method: "POST", body });
+      console.log("[CJ payOrder response]", JSON.stringify(d));
+      const success = d?.result === true || d?.success === true || d?.code === 200;
+      return { ok: !!success, rawResponse: d, data: d?.data ?? null, message: d?.message ?? null };
+    } catch (e) {
+      // cj() throws on result:false — e.message carries CJ's exact reason
+      // (e.g. "Insufficient balance"). Never treat as paid.
+      console.log("[CJ payOrder error]", e.message);
+      return { ok: false, message: e.message, rawResponse: { error: e.message } };
+    }
+  }
+
   async getTracking(ref) {
     await this.hydrate();
     if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };

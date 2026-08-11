@@ -297,18 +297,36 @@ export class CJAdapter extends SupplierAdapter {
         return { ok: false, message: `Missing CJ variant id (vid) on one or more items — refusing to call CJ.` };
       }
 
+      // SERVER-SIDE VALIDATION: CJ requires both shippingCountry and
+      // shippingCountryCode — never call CJ with an empty destination country.
+      const shippingCountryCode = (order.countryCode || "").toString().trim();
+      if (!shippingCountryCode) {
+        return { ok: false, message: `shippingCountry/shippingCountryCode is empty — refusing to call CJ. Resolve the shipping country to an ISO code first.` };
+      }
+
       const payload = {
         orderNumber: order.orderNumber,
         fromCountryCode,
-        shippingCountryCode: order.countryCode, shippingProvince: order.province,
+        // CJ requires BOTH: the ISO code and a non-empty shippingCountry.
+        shippingCountry: shippingCountryCode,
+        shippingCountryCode,
+        shippingProvince: order.province,
         shippingCity: order.city, shippingAddress: order.address, shippingCustomerName: order.name,
         shippingZip: order.zip, shippingPhone: order.phone,
         logisticName, remark: "Atlanta Sneakers",
         products: (order.items || []).map(i => ({ vid: i.external_variant_id, quantity: i.quantity })),
       };
-      // Log the EXACT payload just before the CJ call, confirming logisticName is
-      // present (not undefined/null/"").
-      console.log("[CJ createOrder payload]", JSON.stringify({ ...payload, logisticNamePresent: !!payload.logisticName }));
+      // Log the EXACT payload just before the CJ call, confirming the critical
+      // fields are present (not undefined/null/"").
+      console.log("[CJ createOrder payload]", JSON.stringify({
+        ...payload,
+        _check: {
+          logisticNamePresent: !!payload.logisticName,
+          shippingCountry: payload.shippingCountry,
+          shippingCountryCode: payload.shippingCountryCode,
+          fromCountryCode: payload.fromCountryCode,
+        },
+      }));
 
       const d = await cj("/shopping/order/createOrder", { method: "POST", body: payload });
       return { ok: true, external_order_id: d?.data?.orderId || d?.data?.orderNum, status: "created", logisticName, logisticFrom, raw: d?.data };

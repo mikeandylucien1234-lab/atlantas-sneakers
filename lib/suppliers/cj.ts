@@ -358,11 +358,18 @@ export class CJAdapter extends SupplierAdapter {
     await this.hydrate();
     if (!this.isConfigured() || !orderNumber) return { ok: false };
     try {
-      const d = await cj("/shopping/order/list", { method: "POST", body: { pageNum: 1, pageSize: 50 } });
+      // CJ's order list endpoint is GET (POST returns "method not supported").
+      const d = await cj("/shopping/order/list", { query: { pageNum: 1, pageSize: 100 } });
       const list = d?.data?.list || (Array.isArray(d?.data) ? d.data : []);
-      const match = (list || []).find(o => o.orderNum === orderNumber || o.orderNumber === orderNumber || o.cpOrderNumber === orderNumber);
-      if (match) return { ok: true, external_order_id: match.orderId || match.orderNum || match.id || null, rawResponse: d, match };
-      return { ok: false, rawResponse: d };
+      const match = (list || []).find(o =>
+        o.orderNum === orderNumber || o.orderNumber === orderNumber || o.cpOrderNumber === orderNumber || o.cpOrderNum === orderNumber);
+      if (match) return { ok: true, external_order_id: match.orderId || match.cjOrderId || match.orderNum || match.id || null, rawResponse: d, match };
+      // Fallback: try order detail keyed by our number (some CJ accounts accept it).
+      let detail = null;
+      try { detail = await cj("/shopping/order/getOrderDetail", { query: { orderId: orderNumber } }); } catch { /* ignore */ }
+      const dOrderId = detail?.data?.orderId || detail?.data?.cjOrderId || null;
+      if (dOrderId) return { ok: true, external_order_id: dOrderId, rawResponse: { list: d, detail }, match: detail?.data };
+      return { ok: false, rawResponse: { list: d, detail } };
     } catch (e) { return { ok: false, message: e.message }; }
   }
 

@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { items, shippingAddress, shippingMethod, couponCode, paymentMethod } = body as {
       items: Array<{ productId: string; variantId: string | null; name: string; price: number; quantity: number }>;
-      shippingAddress: { email: string; phone: string; firstName: string; lastName: string; address: string; city: string; country: string; postalCode: string };
+      shippingAddress: { email: string; phone: string; firstName: string; lastName: string; address: string; address2?: string; city: string; state?: string; country: string; postalCode: string };
       shippingMethod: string;
       couponCode?: string;
       paymentMethod: string;

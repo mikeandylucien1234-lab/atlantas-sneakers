@@ -213,6 +213,7 @@ export default function CheckoutPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [address, setAddress] = useState("");
+  const [address2, setAddress2] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [country, setCountry] = useState("Haiti");
@@ -338,7 +339,7 @@ export default function CheckoutPage() {
           shippingMethod,
           couponCode: coupon?.code,
           userId: user?.id,
-          shippingAddress: { email, phone, firstName, lastName, address, city, state, country, postalCode },
+          shippingAddress: { email, phone, firstName, lastName, address, address2, city, state, country, postalCode },
         }),
       })
         .then((res) => res.json())
@@ -357,7 +358,7 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, name: i.name, price: i.price, quantity: i.quantity })),
-          shippingAddress: { email, phone, firstName, lastName, address, city, state, country, postalCode },
+          shippingAddress: { email, phone, firstName, lastName, address, address2, city, state, country, postalCode },
           shippingMethod,
           couponCode: coupon?.code,
           paymentMethod,
@@ -395,7 +396,7 @@ export default function CheckoutPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         paymentIntentId,
-        shippingAddress: { email, phone, firstName, lastName, address, city, state, country, postalCode },
+        shippingAddress: { email, phone, firstName, lastName, address, address2, city, state, country, postalCode },
       }),
     });
     const data = await res.json();
@@ -523,6 +524,10 @@ export default function CheckoutPage() {
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Address <span className="text-[#ef4444]">*</span></label>
                   <input type="text" value={address} onChange={(e) => { setAddress(e.target.value); setAddressErrors((prev) => { const { address: _, ...rest } = prev; return rest; }); }} placeholder="123 Main Street" className={addressErrors.address ? inputErrorCls : inputCls} />
                   {addressErrors.address && <p className="text-[12px] text-[#ef4444] mt-1">{addressErrors.address}</p>}
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">Apartment / Unit <span className="text-[#9aa3ad] font-normal">(optional)</span></label>
+                  <input type="text" value={address2} onChange={(e) => setAddress2(e.target.value)} placeholder="Apt 3402" className={inputCls} />
                 </div>
                 <div>
                   <label className="text-[13px] font-semibold text-[#16181d] mb-1.5 block">City <span className="text-[#ef4444]">*</span></label>

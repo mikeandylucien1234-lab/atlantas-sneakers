@@ -297,11 +297,30 @@ export class CJAdapter extends SupplierAdapter {
         return { ok: false, message: `Missing CJ variant id (vid) on one or more items — refusing to call CJ.` };
       }
 
-      // SERVER-SIDE VALIDATION: CJ requires both shippingCountry and
-      // shippingCountryCode — never call CJ with an empty destination country.
-      const shippingCountryCode = (order.countryCode || "").toString().trim();
-      if (!shippingCountryCode) {
-        return { ok: false, message: `shippingCountry/shippingCountryCode is empty — refusing to call CJ. Resolve the shipping country to an ISO code first.` };
+      // ── STRICT SERVER-SIDE VALIDATION of every mandatory shipping field ──
+      // Trim everything; never send null/""/" ". Apartment/unit (address2) is
+      // appended to the single CJ address line so it can never be lost.
+      const trim = (v) => (v == null ? "" : String(v).trim());
+      const shippingCustomerName = trim(order.name);
+      const address1 = trim(order.address);
+      const address2 = trim(order.address2);
+      const shippingAddress = address2 ? `${address1}, ${address2}` : address1;
+      const shippingCity = trim(order.city);
+      const shippingProvince = trim(order.province);
+      const shippingZip = trim(order.zip);
+      const shippingCountryCode = trim(order.countryCode);
+      const shippingPhone = trim(order.phone);
+
+      const missing = [];
+      if (!shippingCustomerName) missing.push("recipient name (shippingCustomerName)");
+      if (!address1) missing.push("address");
+      if (!shippingCity) missing.push("city");
+      if (!shippingProvince) missing.push("state/province");
+      if (!shippingZip) missing.push("ZIP/postal code");
+      if (!shippingCountryCode) missing.push("country code");
+      if (!shippingPhone) missing.push("phone");
+      if (missing.length) {
+        return { ok: false, message: `Missing required shipping field(s): ${missing.join(", ")} — refusing to call CJ.` };
       }
 
       const payload = {
@@ -310,22 +329,32 @@ export class CJAdapter extends SupplierAdapter {
         // CJ requires BOTH: the ISO code and a non-empty shippingCountry.
         shippingCountry: shippingCountryCode,
         shippingCountryCode,
-        shippingProvince: order.province,
-        shippingCity: order.city, shippingAddress: order.address, shippingCustomerName: order.name,
-        shippingZip: order.zip, shippingPhone: order.phone,
+        shippingProvince,
+        shippingCity,
+        shippingAddress,
+        shippingAddress2: address2 || undefined, // sent too if CJ accepts it; apt is already in shippingAddress
+        shippingCustomerName,
+        shippingZip,
+        shippingPhone,
         logisticName, remark: "Atlanta Sneakers",
         products: (order.items || []).map(i => ({ vid: i.external_variant_id, quantity: i.quantity })),
       };
-      // Log the EXACT payload just before the CJ call, confirming the critical
-      // fields are present (not undefined/null/"").
+      // Log the EXACT shipping fields going to CJ (no tokens/secrets are present
+      // in the payload; auth lives only in the CJ-Access-Token header).
       console.log("[CJ createOrder payload]", JSON.stringify({
-        ...payload,
-        _check: {
-          logisticNamePresent: !!payload.logisticName,
-          shippingCountry: payload.shippingCountry,
-          shippingCountryCode: payload.shippingCountryCode,
-          fromCountryCode: payload.fromCountryCode,
-        },
+        orderNumber: payload.orderNumber,
+        shippingCustomerName: payload.shippingCustomerName,
+        shippingAddress: payload.shippingAddress,
+        shippingAddress2: payload.shippingAddress2 || "",
+        shippingCity: payload.shippingCity,
+        shippingProvince: payload.shippingProvince,
+        shippingZip: payload.shippingZip,
+        shippingCountryCode: payload.shippingCountryCode,
+        shippingCountry: payload.shippingCountry,
+        fromCountryCode: payload.fromCountryCode,
+        shippingPhone: payload.shippingPhone,
+        logisticName: payload.logisticName,
+        products: payload.products,
       }));
 
       const d = await cj("/shopping/order/createOrder", { method: "POST", body: payload });

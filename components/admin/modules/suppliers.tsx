@@ -429,6 +429,31 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
                   {field("Logistics name", p.logistic_name || (p.logistic_error ? `— (${p.logistic_error})` : "—"))}
                   {field("Full API error", p.supplier_order?.error || syncDetail.row?.error || "—")}
 
+                  {/* ── CUSTOMER SHIPPING INFORMATION (from THIS order) ── */}
+                  {p.customer && (
+                    <div className="mt-3 pt-2">
+                      <p className={cn("text-[11px] font-bold uppercase tracking-wide mb-1", sub)}>Customer Shipping Information</p>
+                      {field("Recipient name", p.customer.recipient_name || "— (missing)")}
+                      {field("Address", p.customer.address || "— (missing)")}
+                      {field("Apartment / Unit", p.customer.address2 || "—")}
+                      {field("City", p.customer.city || "— (missing)")}
+                      {field("State / Province", p.customer.state || "— (missing)")}
+                      {field("ZIP / Postal code", p.customer.zip || "— (missing)")}
+                      {field("Country", p.customer.country ? `${p.customer.country}${p.customer.country_code ? ` → ${p.customer.country_code}` : ""}` : "— (missing)")}
+                      {field("Phone", p.customer.phone || "— (missing)")}
+                    </div>
+                  )}
+
+                  {/* ── CJ PAYLOAD PREVIEW (exactly what would be sent to CJ) ── */}
+                  {p.cj_payload_preview && (
+                    <div className="mt-3 pt-2">
+                      <p className={cn("text-[11px] font-bold uppercase tracking-wide mb-1", sub)}>CJ Payload Preview</p>
+                      <pre className={cn("text-[11px] leading-[1.5] whitespace-pre-wrap break-words rounded-[10px] px-3 py-2 overflow-x-auto", sub)} style={{ backgroundColor: "#8881", fontFamily: "ui-monospace, monospace" }}>
+{JSON.stringify(p.cj_payload_preview, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+
                   {/* ── CJ PAYMENT ── */}
                   {p.cj_order_id && (
                     <div className="mt-3 pt-2">

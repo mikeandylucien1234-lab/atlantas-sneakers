@@ -232,11 +232,36 @@ export async function dispatchSupplierOrders(orderId: string, opts: { logisticNa
       return;
     }
 
+    // Build the recipient name from the REAL order data (never a default).
+    const recipientName = `${(addr.firstName || "").trim()} ${(addr.lastName || "").trim()}`.trim();
     const shipping = {
-      countryCode, province: addr.state || null, city: addr.city || null,
-      address: addr.address || null, name: [addr.firstName, addr.lastName].filter(Boolean).join(" ") || null,
-      zip: addr.postalCode || null, phone: addr.phone || null,
+      countryCode,
+      province: (addr.state || "").trim() || null,
+      city: (addr.city || "").trim() || null,
+      address: (addr.address || "").trim() || null,
+      address2: (addr.address2 || "").trim() || null,   // apartment / unit (optional)
+      name: recipientName || null,
+      zip: (addr.postalCode || "").trim() || null,
+      phone: (addr.phone || "").trim() || null,
     };
+
+    // Defense-in-depth validation BEFORE any CJ call. If a mandatory field is
+    // missing, block, record a clear error (visible in Order Sync Details), and
+    // never create a CJ order with incomplete shipping data.
+    const shipMissing = [];
+    if (!shipping.name) shipMissing.push("recipient name");
+    if (!shipping.address) shipMissing.push("address");
+    if (!shipping.city) shipMissing.push("city");
+    if (!shipping.province) shipMissing.push("state/province");
+    if (!shipping.zip) shipMissing.push("ZIP/postal code");
+    if (!shipping.countryCode) shipMissing.push("country code");
+    if (!shipping.phone) shipMissing.push("phone");
+    if (shipMissing.length) {
+      const message = `Missing customer shipping info: ${shipMissing.join(", ")} — CJ order not created.`;
+      await s.from("supplier_orders").insert({ supplier_id: "cj", order_id: orderId, status: "failed", total: order.total || 0, error: message }).then(() => {}, () => {});
+      await s.from("orders").update({ fulfillment_status: "error", fulfillment_error: message }).eq("id", orderId);
+      return;
+    }
 
     const { createSupplierOrder } = await import("@/lib/suppliers/engine");
     const res = await createSupplierOrder({ supplierId: "cj", order: { ...order, shipping, logisticName: opts.logisticName || null }, items, actor: null });

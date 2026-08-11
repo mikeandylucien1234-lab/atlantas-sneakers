@@ -304,6 +304,34 @@ export async function previewSupplierOrder({ supplierId = "cj", orderId }) {
     shipping_country: country, shipping_country_code: countryCode, from_country_code: fromCountryCode,
     logistic_name, logistic_options, logistic_error,
     items,
+    // Customer shipping info (from THIS order) + the exact CJ payload that would
+    // be sent — so the admin can compare before syncing.
+    customer: (() => {
+      const a1 = (addr.address || "").trim(), a2 = (addr.address2 || "").trim();
+      const name = `${(addr.firstName || "").trim()} ${(addr.lastName || "").trim()}`.trim();
+      return {
+        recipient_name: name || null, address: a1 || null, address2: a2 || null,
+        city: (addr.city || "").trim() || null, state: (addr.state || "").trim() || null,
+        zip: (addr.postalCode || "").trim() || null, country: country || null,
+        country_code: countryCode || null, phone: (addr.phone || "").trim() || null,
+      };
+    })(),
+    cj_payload_preview: (() => {
+      const a1 = (addr.address || "").trim(), a2 = (addr.address2 || "").trim();
+      const name = `${(addr.firstName || "").trim()} ${(addr.lastName || "").trim()}`.trim();
+      return {
+        shippingCustomerName: name || null,
+        shippingAddress: a2 ? `${a1}, ${a2}` : (a1 || null),
+        shippingCity: (addr.city || "").trim() || null,
+        shippingProvince: (addr.state || "").trim() || null,
+        shippingZip: (addr.postalCode || "").trim() || null,
+        shippingCountryCode: countryCode || null,
+        fromCountryCode,
+        shippingPhone: (addr.phone || "").trim() || null,
+        logisticName: logistic_name || null,
+        products: items.map(i => ({ vid: i.cj_variant_id, quantity: i.quantity })),
+      };
+    })(),
     supplier_order: so ? { id: so.id, status: so.status, error: so.error, external_order_id: so.external_order_id, created_at: so.created_at } : null,
     // Payment view — the real CJ id, the amount owed to CJ, live CJ status +
     // paymentDate, and our local payment_status. "paid" only when CJ confirms.

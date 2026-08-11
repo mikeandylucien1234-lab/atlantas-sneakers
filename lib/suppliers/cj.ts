@@ -329,7 +329,38 @@ export class CJAdapter extends SupplierAdapter {
       }));
 
       const d = await cj("/shopping/order/createOrder", { method: "POST", body: payload });
-      return { ok: true, external_order_id: d?.data?.orderId || d?.data?.orderNum, status: "created", logisticName, logisticFrom, raw: d?.data };
+      // Log the FULL CJ response so the exact order-id shape is verifiable.
+      console.log("[CJ createOrder response]", JSON.stringify(d));
+
+      // Robustly extract the CJ order id — CJ may return `data` as a plain string
+      // (the id) or an object under one of several keys.
+      const data = d?.data;
+      const external_order_id = data == null ? null
+        : (typeof data === "object"
+            ? (data.orderId || data.orderNum || data.orderNumber || data.cjOrderId || data.id || null)
+            : String(data));
+
+      if (!external_order_id) {
+        // CJ accepted but we couldn't read an id — do NOT report success (would
+        // orphan a real CJ order). Surface for inspection via the logged response.
+        return { ok: false, message: "CJ returned success but no order id could be parsed — see the [CJ createOrder response] log.", raw: data };
+      }
+      return { ok: true, external_order_id: String(external_order_id), status: "created", logisticName, logisticFrom, raw: data };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
+
+  // Best-effort recovery of a CJ order id from OUR order number — used to reclaim
+  // an id when createOrder succeeded but its response id wasn't captured, so we
+  // never place a duplicate. Non-throwing.
+  async findOrderByNumber(orderNumber) {
+    await this.hydrate();
+    if (!this.isConfigured() || !orderNumber) return { ok: false };
+    try {
+      const d = await cj("/shopping/order/list", { method: "POST", body: { pageNum: 1, pageSize: 50 } });
+      const list = d?.data?.list || (Array.isArray(d?.data) ? d.data : []);
+      const match = (list || []).find(o => o.orderNum === orderNumber || o.orderNumber === orderNumber || o.cpOrderNumber === orderNumber);
+      if (match) return { ok: true, external_order_id: match.orderId || match.orderNum || match.id || null };
+      return { ok: false };
     } catch (e) { return { ok: false, message: e.message }; }
   }
 

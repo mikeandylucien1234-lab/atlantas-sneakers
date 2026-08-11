@@ -154,6 +154,32 @@ export async function dispatchSupplierOrders(orderId: string, opts: { logisticNa
     if (!order) return;
     if (order.supplier_external_id) return; // already placed at CJ — idempotent no-op
 
+    // Anti-duplicate: if a CJ order was already created for this order (even if its
+    // id wasn't captured), never create a second one. Recover/record instead.
+    const { data: existingCreated } = await s.from("supplier_orders")
+      .select("id, external_order_id").eq("order_id", orderId).eq("status", "created").limit(1).maybeSingle();
+    if (existingCreated) {
+      let recoveredId = existingCreated.external_order_id || null;
+      // Try to reclaim the CJ order id by our order number (never re-create).
+      if (!recoveredId) {
+        try {
+          const { getAdapter } = await import("@/lib/suppliers/registry");
+          const rec = await getAdapter("cj").findOrderByNumber(order.order_number);
+          if (rec?.ok && rec.external_order_id) {
+            recoveredId = String(rec.external_order_id);
+            await s.from("supplier_orders").update({ external_order_id: recoveredId }).eq("id", existingCreated.id).then(() => {}, () => {});
+          }
+        } catch { /* best-effort */ }
+      }
+      await s.from("orders").update({
+        fulfillment_status: "submitted",
+        ...(recoveredId
+          ? { supplier_external_id: recoveredId, fulfillment_error: null }
+          : { fulfillment_error: "CJ order already created but its id wasn't captured — verify in the CJ dashboard (order " + order.order_number + ")." }),
+      }).eq("id", orderId);
+      return;
+    }
+
     const { data: oItems } = await s.from("order_items").select("product_id, variant_id, quantity, price").eq("order_id", orderId);
     if (!oItems?.length) return;
 

@@ -408,26 +408,49 @@ export class CJAdapter extends SupplierAdapter {
     } catch (e) { return { ok: false, message: e.message }; }
   }
 
-  // Pay a CREATED CJ order from the wallet balance. ONE call only (no retry loop)
-  // so a payment can never be duplicated; the full response is logged/returned and
+  // Pay a CREATED CJ order from the wallet balance — CORRECT two-step flow for a
+  // normal dropshipping order:
+  //   1) createPayOrder(orderId) -> { payOrderCode, payId, amount }
+  //   2) payBalanceV2({ shipmentOrderId: payOrderCode, payId })   ← the ONLY charge
+  // createPayOrder does NOT move money; it only creates the payment bill. The single
+  // charge is payBalanceV2, called exactly once. Full responses are logged/returned;
   // the caller confirms via getOrderPaymentInfo (paymentDate) — never trusts this
   // response alone. `orderId` MUST be the real CJ order id (not our AS-… number).
-  async payOrder({ orderId, orderType = 2 } = {}) {
+  async payOrder({ orderId } = {}) {
     await this.hydrate();
     if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
     if (!orderId) return { ok: false, message: "Missing CJ order id — refusing to pay." };
+
+    // Step 1 — create the pay order (no charge).
+    let createRaw = null, payOrderCode = null, payId = null, amount = null;
     try {
-      const body = { shipmentOrderId: String(orderId), orderId: String(orderId), orderType };
-      console.log("[CJ payOrder request]", JSON.stringify(body));
+      const c = await cj("/shopping/pay/createPayOrder", { method: "POST", body: { orderIds: [String(orderId)], orderId: String(orderId) } });
+      console.log("[CJ createPayOrder response]", JSON.stringify(c));
+      createRaw = c;
+      payOrderCode = c?.data?.payOrderCode || c?.data?.orderCode || c?.data?.payOrderId || null;
+      payId = c?.data?.payId || null;
+      amount = c?.data?.amount ?? null;
+    } catch (e) {
+      console.log("[CJ createPayOrder error]", e.message);
+      return { ok: false, step: "createPayOrder", message: `createPayOrder failed: ${e.message}`, rawResponse: { createPayOrder: { error: e.message } } };
+    }
+    if (!payOrderCode || !payId) {
+      return { ok: false, step: "createPayOrder", message: "createPayOrder did not return payOrderCode/payId — inspect rawResponse.", rawResponse: { createPayOrder: createRaw } };
+    }
+
+    // Step 2 — the single balance charge.
+    try {
+      const body = { shipmentOrderId: String(payOrderCode), payId: String(payId) };
+      console.log("[CJ payBalanceV2 request]", JSON.stringify(body));
       const d = await cj("/shopping/pay/payBalanceV2", { method: "POST", body });
-      console.log("[CJ payOrder response]", JSON.stringify(d));
+      console.log("[CJ payBalanceV2 response]", JSON.stringify(d));
       const success = d?.result === true || d?.success === true || d?.code === 200;
-      return { ok: !!success, rawResponse: d, data: d?.data ?? null, message: d?.message ?? null };
+      return { ok: !!success, amount, message: d?.message ?? null, rawResponse: { createPayOrder: createRaw, payBalanceV2: d } };
     } catch (e) {
       // cj() throws on result:false — e.message carries CJ's exact reason
       // (e.g. "Insufficient balance"). Never treat as paid.
-      console.log("[CJ payOrder error]", e.message);
-      return { ok: false, message: e.message, rawResponse: { error: e.message } };
+      console.log("[CJ payBalanceV2 error]", e.message);
+      return { ok: false, step: "payBalanceV2", message: e.message, rawResponse: { createPayOrder: createRaw, payBalanceV2: { error: e.message } } };
     }
   }
 

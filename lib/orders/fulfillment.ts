@@ -165,6 +165,8 @@ export async function dispatchSupplierOrders(orderId: string, opts: { logisticNa
         try {
           const { getAdapter } = await import("@/lib/suppliers/registry");
           const rec = await getAdapter("cj").findOrderByNumber(order.order_number);
+          // Persist CJ's raw order-list response for inspection from the database.
+          await s.from("supplier_orders").update({ raw: rec?.rawResponse ?? rec ?? null }).eq("id", existingCreated.id).then(() => {}, () => {});
           if (rec?.ok && rec.external_order_id) {
             recoveredId = String(rec.external_order_id);
             await s.from("supplier_orders").update({ external_order_id: recoveredId }).eq("id", existingCreated.id).then(() => {}, () => {});

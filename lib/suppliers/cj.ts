@@ -342,10 +342,12 @@ export class CJAdapter extends SupplierAdapter {
 
       if (!external_order_id) {
         // CJ accepted but we couldn't read an id — do NOT report success (would
-        // orphan a real CJ order). Surface for inspection via the logged response.
-        return { ok: false, message: "CJ returned success but no order id could be parsed — see the [CJ createOrder response] log.", raw: data };
+        // orphan a real CJ order). Store the FULL response for inspection.
+        return { ok: false, message: "CJ returned success but no order id could be parsed — inspect rawResponse.", raw: d, rawResponse: d };
       }
-      return { ok: true, external_order_id: String(external_order_id), status: "created", logisticName, logisticFrom, raw: data };
+      // Store the FULL response (code/result/message/data) so the exact id shape
+      // is always inspectable from the database.
+      return { ok: true, external_order_id: String(external_order_id), status: "created", logisticName, logisticFrom, raw: d, rawResponse: d };
     } catch (e) { return { ok: false, message: e.message }; }
   }
 
@@ -359,8 +361,8 @@ export class CJAdapter extends SupplierAdapter {
       const d = await cj("/shopping/order/list", { method: "POST", body: { pageNum: 1, pageSize: 50 } });
       const list = d?.data?.list || (Array.isArray(d?.data) ? d.data : []);
       const match = (list || []).find(o => o.orderNum === orderNumber || o.orderNumber === orderNumber || o.cpOrderNumber === orderNumber);
-      if (match) return { ok: true, external_order_id: match.orderId || match.orderNum || match.id || null };
-      return { ok: false };
+      if (match) return { ok: true, external_order_id: match.orderId || match.orderNum || match.id || null, rawResponse: d, match };
+      return { ok: false, rawResponse: d };
     } catch (e) { return { ok: false, message: e.message }; }
   }
 

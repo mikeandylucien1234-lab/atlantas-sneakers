@@ -4,61 +4,79 @@ import { useState, useEffect, createContext, useCallback } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { AdminTopbar } from "@/components/admin/topbar";
+import dynamic from "next/dynamic";
 import AdminDashboard from "@/components/admin/modules/dashboard";
-import { AdminOrders } from "@/components/admin/modules/orders";
-import { AdminProducts } from "@/components/admin/modules/products";
-import { AdminGenericTable } from "@/components/admin/modules/generic-table";
-import { AdminBanners } from "@/components/admin/modules/banners";
-import { AdminBackup } from "@/components/admin/modules/backup";
-import { AdminSettings } from "@/components/admin/modules/settings";
-import { AdminIntegrations } from "@/components/admin/modules/integrations";
-import { AdminPayments } from "@/components/admin/modules/payments-admin";
-import { AdminPaymentLogs } from "@/components/admin/modules/payment-logs";
-import { AdminReports } from "@/components/admin/modules/reports";
-import { AdminCategories } from "@/components/admin/modules/categories";
-import { AdminBrands } from "@/components/admin/modules/brands";
-import { AdminInventory } from "@/components/admin/modules/inventory";
-import { AdminFlashDeals } from "@/components/admin/modules/flash-deals";
-import { AdminCustomers } from "@/components/admin/modules/customers";
-import { ProductCreate } from "@/components/admin/modules/product-create";
-import { AdminReviews } from "@/components/admin/modules/reviews";
-import { AdminTickets } from "@/components/admin/modules/tickets";
-import { AdminRewards } from "@/components/admin/modules/rewards";
-import { AdminCoupons } from "@/components/admin/modules/coupons";
-import { AdminHomepage } from "@/components/admin/modules/homepage";
-import { AdminBlog } from "@/components/admin/modules/blog";
-import { AdminMedia } from "@/components/admin/modules/media";
-import { AdminFaq } from "@/components/admin/modules/faq";
-import { AdminShipping } from "@/components/admin/modules/shipping";
-import { AdminReturns } from "@/components/admin/modules/returns";
-import { AdminPaymentSettings } from "@/components/admin/modules/payment-settings";
-import { AdminTax } from "@/components/admin/modules/tax";
-import { AdminSeo } from "@/components/admin/modules/seo";
-import { AdminAnalytics } from "@/components/admin/modules/ganalytics";
-import { AdminTikTok } from "@/components/admin/modules/tiktok";
-import { AdminSearchConsole } from "@/components/admin/modules/search-console";
-import { AdminNotifications } from "@/components/admin/modules/notifications";
-import { AdminRoles } from "@/components/admin/modules/roles";
-import { AdminStaff } from "@/components/admin/modules/staff";
-import { AdminSecurity } from "@/components/admin/modules/security";
-import { AdminLoginHistory } from "@/components/admin/modules/login-history";
-import { AdminAudit } from "@/components/admin/modules/audit";
-import { AdminActivity } from "@/components/admin/modules/activity";
-import { AdminApiKeys } from "@/components/admin/modules/api-keys";
-import { AdminHealth } from "@/components/admin/modules/health";
-import { AdminSettingsCenter } from "@/components/admin/modules/settings-center";
-import { AdminSuppliers } from "@/components/admin/modules/suppliers";
-import { AdminAttributes } from "@/components/admin/modules/attributes";
-import { AdminSizes } from "@/components/admin/modules/sizes";
-import { AdminWarranties } from "@/components/admin/modules/warranties";
-import { AdminHomepageCategories } from "@/components/admin/modules/homepage-categories";
-import { AdminHomepageNavTabs } from "@/components/admin/modules/homepage-nav-tabs";
-import { AdminMenLanding } from "@/components/admin/modules/men-landing";
-import { AdminAnnouncementBar } from "@/components/admin/modules/announcement-bar";
 import { PermissionProvider } from "@/lib/rbac/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navGroups } from "@/components/admin/sidebar";
+
+// Lightweight fallback shown while a module chunk is being fetched. Hoisted
+// function declaration so it can be referenced by the dynamic() calls below.
+function ModuleLoader() {
+  return (
+    <div className="flex items-center justify-center py-24">
+      <Loader2 className="w-7 h-7 animate-spin text-[#2563eb]" />
+    </div>
+  );
+}
+
+// Code-splitting: every admin module is loaded lazily so the initial /admin
+// bundle stays tiny (only the shell + the default Dashboard). Each module's
+// code is fetched on demand the first time its section is opened. Same module
+// names, same props, same navigation — only the loading strategy changes.
+// (ssr:false: these are client-only admin screens; nothing is rendered until
+// the authenticated admin has already passed the server-side gate in layout.tsx.)
+const AdminOrders = dynamic(() => import("@/components/admin/modules/orders").then((m) => m.AdminOrders), { loading: ModuleLoader, ssr: false });
+const AdminProducts = dynamic(() => import("@/components/admin/modules/products").then((m) => m.AdminProducts), { loading: ModuleLoader, ssr: false });
+const AdminGenericTable = dynamic(() => import("@/components/admin/modules/generic-table").then((m) => m.AdminGenericTable), { loading: ModuleLoader, ssr: false });
+const AdminBanners = dynamic(() => import("@/components/admin/modules/banners").then((m) => m.AdminBanners), { loading: ModuleLoader, ssr: false });
+const AdminBackup = dynamic(() => import("@/components/admin/modules/backup").then((m) => m.AdminBackup), { loading: ModuleLoader, ssr: false });
+const AdminSettings = dynamic(() => import("@/components/admin/modules/settings").then((m) => m.AdminSettings), { loading: ModuleLoader, ssr: false });
+const AdminIntegrations = dynamic(() => import("@/components/admin/modules/integrations").then((m) => m.AdminIntegrations), { loading: ModuleLoader, ssr: false });
+const AdminPayments = dynamic(() => import("@/components/admin/modules/payments-admin").then((m) => m.AdminPayments), { loading: ModuleLoader, ssr: false });
+const AdminPaymentLogs = dynamic(() => import("@/components/admin/modules/payment-logs").then((m) => m.AdminPaymentLogs), { loading: ModuleLoader, ssr: false });
+const AdminReports = dynamic(() => import("@/components/admin/modules/reports").then((m) => m.AdminReports), { loading: ModuleLoader, ssr: false });
+const AdminCategories = dynamic(() => import("@/components/admin/modules/categories").then((m) => m.AdminCategories), { loading: ModuleLoader, ssr: false });
+const AdminBrands = dynamic(() => import("@/components/admin/modules/brands").then((m) => m.AdminBrands), { loading: ModuleLoader, ssr: false });
+const AdminInventory = dynamic(() => import("@/components/admin/modules/inventory").then((m) => m.AdminInventory), { loading: ModuleLoader, ssr: false });
+const AdminFlashDeals = dynamic(() => import("@/components/admin/modules/flash-deals").then((m) => m.AdminFlashDeals), { loading: ModuleLoader, ssr: false });
+const AdminCustomers = dynamic(() => import("@/components/admin/modules/customers").then((m) => m.AdminCustomers), { loading: ModuleLoader, ssr: false });
+const ProductCreate = dynamic(() => import("@/components/admin/modules/product-create").then((m) => m.ProductCreate), { loading: ModuleLoader, ssr: false });
+const AdminReviews = dynamic(() => import("@/components/admin/modules/reviews").then((m) => m.AdminReviews), { loading: ModuleLoader, ssr: false });
+const AdminTickets = dynamic(() => import("@/components/admin/modules/tickets").then((m) => m.AdminTickets), { loading: ModuleLoader, ssr: false });
+const AdminRewards = dynamic(() => import("@/components/admin/modules/rewards").then((m) => m.AdminRewards), { loading: ModuleLoader, ssr: false });
+const AdminCoupons = dynamic(() => import("@/components/admin/modules/coupons").then((m) => m.AdminCoupons), { loading: ModuleLoader, ssr: false });
+const AdminHomepage = dynamic(() => import("@/components/admin/modules/homepage").then((m) => m.AdminHomepage), { loading: ModuleLoader, ssr: false });
+const AdminBlog = dynamic(() => import("@/components/admin/modules/blog").then((m) => m.AdminBlog), { loading: ModuleLoader, ssr: false });
+const AdminMedia = dynamic(() => import("@/components/admin/modules/media").then((m) => m.AdminMedia), { loading: ModuleLoader, ssr: false });
+const AdminFaq = dynamic(() => import("@/components/admin/modules/faq").then((m) => m.AdminFaq), { loading: ModuleLoader, ssr: false });
+const AdminShipping = dynamic(() => import("@/components/admin/modules/shipping").then((m) => m.AdminShipping), { loading: ModuleLoader, ssr: false });
+const AdminReturns = dynamic(() => import("@/components/admin/modules/returns").then((m) => m.AdminReturns), { loading: ModuleLoader, ssr: false });
+const AdminPaymentSettings = dynamic(() => import("@/components/admin/modules/payment-settings").then((m) => m.AdminPaymentSettings), { loading: ModuleLoader, ssr: false });
+const AdminTax = dynamic(() => import("@/components/admin/modules/tax").then((m) => m.AdminTax), { loading: ModuleLoader, ssr: false });
+const AdminSeo = dynamic(() => import("@/components/admin/modules/seo").then((m) => m.AdminSeo), { loading: ModuleLoader, ssr: false });
+const AdminAnalytics = dynamic(() => import("@/components/admin/modules/ganalytics").then((m) => m.AdminAnalytics), { loading: ModuleLoader, ssr: false });
+const AdminTikTok = dynamic(() => import("@/components/admin/modules/tiktok").then((m) => m.AdminTikTok), { loading: ModuleLoader, ssr: false });
+const AdminSearchConsole = dynamic(() => import("@/components/admin/modules/search-console").then((m) => m.AdminSearchConsole), { loading: ModuleLoader, ssr: false });
+const AdminNotifications = dynamic(() => import("@/components/admin/modules/notifications").then((m) => m.AdminNotifications), { loading: ModuleLoader, ssr: false });
+const AdminRoles = dynamic(() => import("@/components/admin/modules/roles").then((m) => m.AdminRoles), { loading: ModuleLoader, ssr: false });
+const AdminStaff = dynamic(() => import("@/components/admin/modules/staff").then((m) => m.AdminStaff), { loading: ModuleLoader, ssr: false });
+const AdminSecurity = dynamic(() => import("@/components/admin/modules/security").then((m) => m.AdminSecurity), { loading: ModuleLoader, ssr: false });
+const AdminLoginHistory = dynamic(() => import("@/components/admin/modules/login-history").then((m) => m.AdminLoginHistory), { loading: ModuleLoader, ssr: false });
+const AdminAudit = dynamic(() => import("@/components/admin/modules/audit").then((m) => m.AdminAudit), { loading: ModuleLoader, ssr: false });
+const AdminActivity = dynamic(() => import("@/components/admin/modules/activity").then((m) => m.AdminActivity), { loading: ModuleLoader, ssr: false });
+const AdminApiKeys = dynamic(() => import("@/components/admin/modules/api-keys").then((m) => m.AdminApiKeys), { loading: ModuleLoader, ssr: false });
+const AdminHealth = dynamic(() => import("@/components/admin/modules/health").then((m) => m.AdminHealth), { loading: ModuleLoader, ssr: false });
+const AdminSettingsCenter = dynamic(() => import("@/components/admin/modules/settings-center").then((m) => m.AdminSettingsCenter), { loading: ModuleLoader, ssr: false });
+const AdminSuppliers = dynamic(() => import("@/components/admin/modules/suppliers").then((m) => m.AdminSuppliers), { loading: ModuleLoader, ssr: false });
+const AdminAttributes = dynamic(() => import("@/components/admin/modules/attributes").then((m) => m.AdminAttributes), { loading: ModuleLoader, ssr: false });
+const AdminSizes = dynamic(() => import("@/components/admin/modules/sizes").then((m) => m.AdminSizes), { loading: ModuleLoader, ssr: false });
+const AdminWarranties = dynamic(() => import("@/components/admin/modules/warranties").then((m) => m.AdminWarranties), { loading: ModuleLoader, ssr: false });
+const AdminHomepageCategories = dynamic(() => import("@/components/admin/modules/homepage-categories").then((m) => m.AdminHomepageCategories), { loading: ModuleLoader, ssr: false });
+const AdminHomepageNavTabs = dynamic(() => import("@/components/admin/modules/homepage-nav-tabs").then((m) => m.AdminHomepageNavTabs), { loading: ModuleLoader, ssr: false });
+const AdminMenLanding = dynamic(() => import("@/components/admin/modules/men-landing").then((m) => m.AdminMenLanding), { loading: ModuleLoader, ssr: false });
+const AdminAnnouncementBar = dynamic(() => import("@/components/admin/modules/announcement-bar").then((m) => m.AdminAnnouncementBar), { loading: ModuleLoader, ssr: false });
 
 type Toast = { message: string; type: "success" | "info" | "warn" } | null;
 

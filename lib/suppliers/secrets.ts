@@ -7,13 +7,24 @@
 // on the host still wins over a UI-entered one.
 import crypto from "crypto";
 import { createClient as createAnon } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 
-function svc() {
-  return createAnon(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false } }
-  );
+// DB client for the credential store. Prefer the service-role key (bypasses
+// RLS — works in every context, including background jobs). If it isn't set at
+// runtime, fall back to the request-authenticated server client (cookie
+// session) so an admin using the UI can still read/write credentials under the
+// is_admin() RLS policy. Last resort: anon (RLS will apply). This prevents the
+// UI from showing "credentials missing / disconnected" just because the
+// service-role key is absent, while the encrypted values are still intact.
+async function svc() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceKey) return createAnon(url, serviceKey, { auth: { persistSession: false } });
+  try {
+    return await createServerClient();
+  } catch {
+    return createAnon(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } });
+  }
 }
 
 // 32-byte key derived from a server secret. Prefers a dedicated key; falls back
@@ -64,7 +75,8 @@ export async function ensureCreds(supplierId) {
   if (c && Date.now() < c.exp) return c.creds;
   let creds = {};
   try {
-    const { data } = await svc().from("supplier_credentials").select("data").eq("supplier_id", supplierId).maybeSingle();
+    const sb = await svc();
+    const { data } = await sb.from("supplier_credentials").select("data").eq("supplier_id", supplierId).maybeSingle();
     if (data?.data) creds = decryptJSON(data.data) || {};
   } catch {}
   _cache[supplierId] = { creds, exp: Date.now() + TTL };
@@ -85,7 +97,8 @@ export async function saveCreds(supplierId, fields, actor) {
   }
   const hintSource = merged.email || merged.access_token || merged.api_key || "";
   const hint = hintSource ? hintSource.slice(0, 3) + "•••" + hintSource.slice(-2) : null;
-  await svc().from("supplier_credentials").upsert({
+  const sb = await svc();
+  await sb.from("supplier_credentials").upsert({
     supplier_id: supplierId, data: encryptJSON(merged), hint, updated_at: new Date().toISOString(),
     updated_by: actor?.id || null,
   }, { onConflict: "supplier_id" });
@@ -94,7 +107,7 @@ export async function saveCreds(supplierId, fields, actor) {
 }
 
 export async function clearCreds(supplierId) {
-  try { await svc().from("supplier_credentials").delete().eq("supplier_id", supplierId); } catch {}
+  try { const sb = await svc(); await sb.from("supplier_credentials").delete().eq("supplier_id", supplierId); } catch {}
   delete _cache[supplierId];
 }
 

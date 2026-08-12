@@ -3,13 +3,24 @@ import { createClient as createAnon } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { requirePermission } from "@/lib/rbac/server";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { getAdapter } from "@/lib/suppliers/registry";
 import { importProduct, createSupplierOrder, syncTracking, syncInventory, syncProductVariants } from "@/lib/suppliers/engine";
 import { logAudit } from "@/lib/audit/log";
 import { logActivity } from "@/lib/activity/log";
 import { ensureCreds, saveCreds, clearCreds, credsStatus } from "@/lib/suppliers/secrets";
 
-function svc() { return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false } }); }
+// DB client for this route. Prefer the service-role key (bypasses RLS). If it
+// isn't configured at runtime, fall back to the request-authenticated server
+// client (cookie session) so RLS policies like is_admin() are satisfied by the
+// signed-in admin — access has already been verified via requirePermission()
+// in each handler. This avoids a silent empty result (e.g. Orders Sync showing
+// "no supplier orders") when SUPABASE_SERVICE_ROLE_KEY is missing.
+async function svc() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (key) return createAnon(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, { auth: { persistSession: false } });
+  return await createServerClient();
+}
 function ipOf(r) { return r.headers.get("x-forwarded-for")?.split(",")[0] || null; }
 async function slog(s, row) { try { await s.from("supplier_logs").insert(row); } catch {} }
 
@@ -17,7 +28,7 @@ export async function GET(request: NextRequest, { params }) {
   const { supplier, action } = await params;
   const auth = await requirePermission("products.view");
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
-  const s = svc(); const sp = request.nextUrl.searchParams;
+  const s = await svc(); const sp = request.nextUrl.searchParams;
 
   try {
     if (action === "overview") {
@@ -92,7 +103,7 @@ export async function POST(request: NextRequest, { params }) {
   const perm = action === "import" || action === "bulk-import" ? "products.create" : ["connect", "disconnect", "generate-webhook", "pricing-rule", "shipping-rule", "category-map", "save-credentials", "clear-credentials", "sync-variants", "retry-order", "pay-order", "auto-pay"].includes(action) ? "products.manage" : "products.view";
   const auth = await requirePermission(perm);
   if (!auth.ok) return Response.json({ error: auth.error }, { status: auth.status });
-  const s = svc(); const actor = auth.profile; const b = await request.json().catch(() => ({})); const ip = ipOf(request);
+  const s = await svc(); const actor = auth.profile; const b = await request.json().catch(() => ({})); const ip = ipOf(request);
 
   try {
     if (action === "save-credentials") {

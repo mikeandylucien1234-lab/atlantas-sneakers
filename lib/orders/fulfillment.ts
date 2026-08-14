@@ -104,8 +104,13 @@ export async function finalizeStripeOrder(
 // Retry automatic dispatch for paid orders that were never successfully placed
 // at the supplier (no supplier order id yet). Called by the scheduled sync so a
 // transient CJ failure self-heals with no manual step. Idempotent per order.
-export async function retryPendingDispatches(limit = 50): Promise<{ attempted: number }> {
-  let attempted = 0;
+// Max automatic dispatch attempts before an order is parked for manual review —
+// stops an order that keeps failing (e.g. an unmappable variant) from being
+// retried forever and inserting a new failed supplier_orders row every cycle.
+export const MAX_DISPATCH_ATTEMPTS = 8;
+
+export async function retryPendingDispatches(limit = 50): Promise<{ attempted: number; parked: number }> {
+  let attempted = 0, parked = 0;
   try {
     const s = admin();
     const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
@@ -117,11 +122,25 @@ export async function retryPendingDispatches(limit = 50): Promise<{ attempted: n
       .in("fulfillment_status", ["unfulfilled", "error"])
       .gte("created_at", since)
       .limit(limit);
-    for (const o of orders || []) { await dispatchSupplierOrders(o.id); attempted++; }
+    for (const o of orders || []) {
+      // Cap retries: count prior failed attempts for this order.
+      const { count } = await s.from("supplier_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("order_id", o.id).eq("status", "failed");
+      if ((count || 0) >= MAX_DISPATCH_ATTEMPTS) {
+        await s.from("orders").update({
+          fulfillment_status: "error",
+          fulfillment_error: `Dispatch failed ${count} times — parked for manual review. Fix the cause (e.g. run "Sync CJ Variants" or correct the address) then use Retry in Order Sync Details.`,
+        }).eq("id", o.id).then(() => {}, () => {});
+        parked++;
+        continue;
+      }
+      await dispatchSupplierOrders(o.id); attempted++;
+    }
   } catch (err) {
     console.error("retryPendingDispatches failed:", err);
   }
-  return { attempted };
+  return { attempted, parked };
 }
 
 // Resolve the exact CJ variant id (vid) for one ordered line, following the

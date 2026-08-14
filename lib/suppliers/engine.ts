@@ -348,6 +348,10 @@ export async function previewSupplierOrder({ supplierId = "cj", orderId }) {
 // THE single, guarded CJ wallet-payment flow (used by BOTH auto-pay and the
 // manual "Pay CJ Order" button). Never pays twice, never marks paid without CJ
 // confirming paymentDate, uses the REAL CJ order id, records everything.
+// Max automatic payment attempts before an unpaid CJ order is parked for manual
+// review (prevents endless retries on e.g. a chronically empty wallet).
+export const MAX_PAY_ATTEMPTS = 6;
+
 export async function paySupplierOrder({ supplierId = "cj", orderId, actor = null } = {}) {
   const s = svc();
   const { data: so } = await s.from("supplier_orders").select("*")
@@ -355,6 +359,13 @@ export async function paySupplierOrder({ supplierId = "cj", orderId, actor = nul
     .not("external_order_id", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (!so || !so.external_order_id) return { ok: false, error: "No CJ order id for this order — create the CJ order first." };
   const cjId = so.external_order_id; // REAL CJ id, never AS-…
+
+  // Guard 0 — FINANCIAL SAFETY: never pay a supplier for an order the customer
+  // hasn't actually paid us for. The customer order must be paid + still valid.
+  const { data: custOrder } = await s.from("orders").select("payment_status, status").eq("id", orderId).maybeSingle();
+  if (!custOrder) return { ok: false, error: "Customer order not found — refusing to pay CJ." };
+  if (custOrder.payment_status !== "paid") return { ok: false, error: `Customer order is not paid (payment_status=${custOrder.payment_status}) — refusing to pay CJ.` };
+  if (custOrder.status === "cancelled") return { ok: false, error: "Customer order is cancelled — refusing to pay CJ." };
 
   // Guard 1 — already paid locally.
   if (so.payment_status === "paid" || so.paid_at) return { ok: true, already: true, payment_status: "paid", cj_order_id: cjId, paid_at: so.paid_at, paid_amount: so.paid_amount };
@@ -370,9 +381,12 @@ export async function paySupplierOrder({ supplierId = "cj", orderId, actor = nul
     return { ok: true, already: true, payment_status: "paid", cj_order_id: cjId, paid_amount: pre.orderAmount ?? so.total };
   }
 
-  // Soft lock.
-  await s.from("supplier_orders").update({ payment_status: "paying", payment_error: null }).eq("id", so.id);
-  await slog(s, { supplier_id: supplierId, action: "pay_order", status: "ok", error: `paying ${cjId}`, actor_id: actor?.id, actor_name: actor?.full_name });
+  // Soft lock + attempt accounting (used by the auto-pay retry sweep for backoff/cap).
+  await s.from("supplier_orders").update({
+    payment_status: "paying", payment_error: null,
+    payment_attempts: (so.payment_attempts || 0) + 1, last_payment_attempt_at: new Date().toISOString(),
+  }).eq("id", so.id);
+  await slog(s, { supplier_id: supplierId, action: "pay_order", status: "ok", error: `paying ${cjId} (attempt ${(so.payment_attempts || 0) + 1})`, actor_id: actor?.id, actor_name: actor?.full_name });
 
   const pay = await adapter.payOrder({ orderId: cjId });
 
@@ -391,9 +405,47 @@ export async function paySupplierOrder({ supplierId = "cj", orderId, actor = nul
 
   // Not confirmed → failed. Leave unpaid, never ship.
   const msg = pay.ok ? "CJ did not confirm payment (paymentDate still empty) — verify wallet/order." : (pay.message || "CJ payment failed");
+  // Classify the failure so the auto-pay sweep knows whether to retry:
+  //  - transient/recoverable (network, timeout, token, insufficient balance that
+  //    may be topped up) → retryable until MAX_PAY_ATTEMPTS.
+  //  - anything else → still capped by MAX_PAY_ATTEMPTS so it can't loop forever.
+  const low = String(msg).toLowerCase();
+  const retryable = /balance|insufficient|timeout|network|econn|temporar|rate limit|token|429|502|503|504|fetch failed/.test(low);
   await s.from("supplier_orders").update({ payment_status: "failed", payment_error: msg, payment_raw: pay.rawResponse || null }).eq("id", so.id);
   await slog(s, { supplier_id: supplierId, action: "pay_order", status: "error", error: msg });
-  return { ok: false, payment_status: "failed", error: msg, cj_order_id: cjId };
+  return { ok: false, payment_status: "failed", error: msg, cj_order_id: cjId, retryable, attempts: (so.payment_attempts || 0) + 1 };
+}
+
+// AUTO-PAY SWEEP — self-healing payment loop for production. When cj_auto_pay is
+// ON, finds CJ orders that are CREATED but still UNPAID (customer already paid us)
+// and attempts payment through the single guarded paySupplierOrder flow. Bounded
+// by MAX_PAY_ATTEMPTS per order; the cron cadence provides the back-off between
+// tries. Never double-pays (paySupplierOrder re-checks CJ paymentDate first).
+export async function autopayCreatedOrders({ supplierId = "cj", limit = 50 } = {}) {
+  const s = svc();
+  // Respect the admin switch — this is the ONLY place a real charge can start
+  // automatically. OFF by default → no spend.
+  const { data: conn } = await s.from("supplier_connections").select("config").eq("supplier_id", supplierId).maybeSingle();
+  if (conn?.config?.cj_auto_pay !== true) return { ok: true, enabled: false, paid: 0, attempted: 0 };
+
+  const { data: rows } = await s.from("supplier_orders")
+    .select("id, order_id, payment_attempts")
+    .eq("supplier_id", supplierId)
+    .eq("status", "created")
+    .not("external_order_id", "is", null)
+    .in("payment_status", ["unpaid", "failed"])
+    .lt("payment_attempts", MAX_PAY_ATTEMPTS)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  let attempted = 0, paid = 0;
+  for (const r of rows || []) {
+    if (!r.order_id) continue;
+    attempted++;
+    const res = await paySupplierOrder({ supplierId, orderId: r.order_id });
+    if (res?.ok && (res.payment_status === "paid" || res.already)) paid++;
+  }
+  return { ok: true, enabled: true, attempted, paid };
 }
 
 // Place a supplier order for one of our orders (Order Engine).

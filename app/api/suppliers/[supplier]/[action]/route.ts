@@ -33,9 +33,23 @@ export async function GET(request: NextRequest, { params }) {
   try {
     if (action === "overview") {
       const { data: sup } = await s.from("suppliers").select("*").eq("id", supplier).single();
-      const { data: conn } = await s.from("supplier_connections").select("*").eq("supplier_id", supplier).single();
+      let { data: conn } = await s.from("supplier_connections").select("*").eq("supplier_id", supplier).single();
       const adapter = getAdapter(supplier);
       await ensureCreds(supplier); // hydrate UI-stored credentials before the sync check
+      // Self-heal the "Connected" badge: it is a stored flag, only flipped by the
+      // Connect/Disconnect/Test buttons — it does NOT reflect whether credentials
+      // actually work. Env-var (or DB-stored) credentials can be present and fully
+      // functional while this flag still reads false (e.g. after a redeploy), which
+      // showed as "Disconnected" even though nothing was actually broken and every
+      // API call succeeded. If real credentials are configured, treat it as
+      // connected automatically — no manual "Connect" click needed to see the
+      // correct status.
+      if (adapter.isConfigured() && conn && !conn.connected) {
+        const { data: healed } = await s.from("supplier_connections")
+          .update({ connected: true, api_health: "healthy", updated_at: new Date().toISOString() })
+          .eq("supplier_id", supplier).select("*").single();
+        if (healed) conn = healed;
+      }
       const [{ count: products }, { count: orders }, { count: imported }, credStatus] = await Promise.all([
         s.from("supplier_products").select("id", { count: "exact", head: true }).eq("supplier_id", supplier),
         s.from("supplier_orders").select("id", { count: "exact", head: true }).eq("supplier_id", supplier),

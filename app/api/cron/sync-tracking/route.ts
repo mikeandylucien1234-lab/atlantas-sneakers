@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { syncOpenSupplierOrders, autopayCreatedOrders } from "@/lib/suppliers/engine";
-import { retryPendingDispatches } from "@/lib/orders/fulfillment";
+import { retryPendingDispatches, reconcileOrphanedStripePayments } from "@/lib/orders/fulfillment";
 import { requirePermission } from "@/lib/rbac/server";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,11 @@ async function run(request: NextRequest) {
   if (!(await authorize(request))) return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     // Production heartbeat — runs the whole automation in order, self-healing:
+    // 0) Reconcile: any Stripe payment that succeeded but has no order yet
+    //    (e.g. the app was restarting when both confirm AND the webhook tried)
+    //    gets its order created now — read-only against Stripe, never a new
+    //    charge, and protected against duplicates by the unique index.
+    const reconciled = await reconcileOrphanedStripePayments({ sinceHours: 72, limit: 200 });
     // 1) Place any paid orders that haven't reached CJ yet (recover failures).
     const retried = await retryPendingDispatches(50);
     // 2) Auto-pay CJ orders that are created but unpaid (only if cj_auto_pay ON).
@@ -35,6 +40,7 @@ async function run(request: NextRequest) {
       ...result,
       dispatch_retried: retried.attempted,
       autopay_enabled: autopay.enabled, autopay_attempted: autopay.attempted, autopay_paid: autopay.paid,
+      payments_reconciled: reconciled.created, payments_scanned: reconciled.scanned,
     });
   } catch (err: any) {
     return Response.json({ error: err?.message || "sync failed" }, { status: 500 });

@@ -6,6 +6,7 @@
 // Every write is idempotent on orders.stripe_payment_intent_id.
 import { createClient } from "@supabase/supabase-js";
 import { toCountryCode } from "@/lib/geo/country-codes";
+import { sendEmail } from "@/lib/notifications/senders";
 
 function admin() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -98,7 +99,94 @@ export async function finalizeStripeOrder(
   // Clear the server-side cart for signed-in buyers.
   if (userId) await s.from("cart_items").delete().eq("user_id", userId).then(() => {}, () => {});
 
+  // Order confirmation email — best-effort, only on the FIRST creation of this
+  // order (never re-sent on idempotent re-calls from the webhook/confirm race,
+  // or from the reconciliation sweep re-checking an order that already exists).
+  // This is the customer's guarantee of a confirmation even if the on-page
+  // "Order Confirmed" screen never rendered (closed tab, network drop, the
+  // server restarting mid-request, etc.) — the exact failure mode behind the
+  // Aug 24 incident.
+  sendOrderConfirmationEmail(s, { orderId: order.id, orderNumber, shippingAddress, items: parsedItems, total }).catch(() => {});
+
   return { orderId: order.id, orderNumber: order.order_number, created: true };
+}
+
+async function sendOrderConfirmationEmail(s, { orderId, orderNumber, shippingAddress, items, total }) {
+  const to = shippingAddress?.email;
+  if (!to) return; // no address captured for this order — nothing to send to
+  const pids = [...new Set((items || []).map((i) => i.pid).filter(Boolean))];
+  let names = new Map();
+  if (pids.length) {
+    const { data: products } = await s.from("products").select("id, name").in("id", pids);
+    names = new Map((products || []).map((p) => [p.id, p.name]));
+  }
+  const rows = (items || []).map((i) => {
+    const name = names.get(i.pid) || "Item";
+    const lineTotal = (Number(i.price) || 0) * (Number(i.qty) || 1);
+    return `<tr><td style="padding:6px 0;">${name} × ${i.qty}</td><td style="padding:6px 0;text-align:right;">$${lineTotal.toFixed(2)}</td></tr>`;
+  }).join("");
+  const html = `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+      <h2>Thanks for your order, ${shippingAddress?.firstName || "there"}!</h2>
+      <p>Your order <strong>${orderNumber}</strong> is confirmed.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">${rows}</table>
+      <p style="font-weight:bold;">Total: $${Number(total).toFixed(2)}</p>
+      <p>We'll email you again with tracking as soon as your order ships.</p>
+    </div>`;
+  const res = await sendEmail({ to, subject: `Order confirmed — ${orderNumber}`, html });
+  if (!res.ok) console.error(`Order confirmation email failed for ${orderNumber}:`, res.error);
+}
+
+// RECONCILIATION — self-healing safety net for the Aug 24 failure mode: a
+// Stripe payment succeeds but NEITHER the client-driven /checkout/confirm call
+// NOR the webhook manage to create the order (e.g. the app was mid-restart for
+// both at once). Periodically asks Stripe itself — the source of truth — for
+// recently succeeded PaymentIntents, and creates the (missing) order for any
+// that have none yet. NEVER creates a charge, NEVER refunds, NEVER touches an
+// order that already exists (checked before AND enforced by the DB's unique
+// index on stripe_payment_intent_id as a hard backstop against a race).
+export async function reconcileOrphanedStripePayments({ sinceHours = 72, limit = 200 } = {}) {
+  const s = (() => { try { return admin(); } catch { return null; } })();
+  if (!s) return { ok: false, message: "SUPABASE_SERVICE_ROLE_KEY not configured", scanned: 0, created: 0 };
+  const { stripe } = await import("@/lib/stripe");
+
+  let scanned = 0, created = 0, alreadyExisted = 0, notSucceeded = 0;
+  const createdOrders: Array<{ orderNumber: string; paymentIntentId: string; amount: number }> = [];
+  const errors: string[] = [];
+
+  try {
+    const sinceUnix = Math.floor(Date.now() / 1000) - sinceHours * 3600;
+    let startingAfter: string | undefined;
+    do {
+      const page = await stripe.paymentIntents.list({ created: { gte: sinceUnix }, limit: 100, starting_after: startingAfter });
+      for (const pi of page.data) {
+        if (scanned >= limit) break;
+        scanned++;
+        if (pi.status !== "succeeded") { notSucceeded++; continue; }
+
+        const { data: existing } = await s.from("orders").select("id").eq("stripe_payment_intent_id", pi.id).maybeSingle();
+        if (existing) { alreadyExisted++; continue; }
+
+        try {
+          const result = await finalizeStripeOrder(pi, {});
+          if (result.created) {
+            created++;
+            createdOrders.push({ orderNumber: result.orderNumber, paymentIntentId: pi.id, amount: (pi.amount || 0) / 100 });
+            dispatchSupplierOrders(result.orderId).catch(() => {});
+          } else {
+            alreadyExisted++; // created concurrently between our check and the call — the unique index protected it
+          }
+        } catch (e: any) {
+          errors.push(`${pi.id}: ${e?.message || e}`);
+        }
+      }
+      startingAfter = page.has_more && page.data.length ? page.data[page.data.length - 1].id : undefined;
+    } while (startingAfter && scanned < limit);
+  } catch (e: any) {
+    return { ok: false, message: e?.message || String(e), scanned, created, alreadyExisted, notSucceeded, createdOrders, errors };
+  }
+
+  return { ok: true, scanned, created, alreadyExisted, notSucceeded, createdOrders, errors };
 }
 
 // Retry automatic dispatch for paid orders that were never successfully placed

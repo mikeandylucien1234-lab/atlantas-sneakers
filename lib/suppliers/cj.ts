@@ -191,6 +191,19 @@ export class CJAdapter extends SupplierAdapter {
           if (qp?.pid && !byId.has(qp.pid)) { byId.set(qp.pid, { pid: qp.pid, productNameEn: qp.productNameEn, productSku: qp.productSku, productImage: qp.productImage, sellPrice: qp.sellPrice, categoryName: qp.categoryName }); }
           if (debug) dbg.push({ attempt: "product/query?productSku", url: `${BASE}/product/query?productSku=${encodeURIComponent(kw)}`, found: !!qp?.pid, name: qp?.productNameEn });
         } catch (e) { if (debug) dbg.push({ attempt: "product/query?productSku", error: e.message }); }
+        // An exact SKU/PID search has ONE correct answer. If CJ's own SKU
+        // lookup found it, return it immediately — never dilute or re-rank it
+        // against unrelated name-matched products (searching a SKU string as
+        // if it were a product name can outrank the real match, or bury it on
+        // a later page). This guarantees: paste a SKU from CJ, search it here,
+        // get exactly — and only — that same product.
+        if (byId.size > 0) {
+          const exact = [...byId.values()];
+          const total = Math.max(exact.length, firstTotal);
+          const out = { ok: true, total, products: exact.map(mapItem) };
+          if (debug) out.debug = { query: kw, skuCheck: skuCheck || null, exactSkuMatch: true, pool: byId.size, attempts: dbg };
+          return out;
+        }
       }
 
       // Name-based variants across two CJ name params.

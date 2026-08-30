@@ -415,6 +415,32 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
                   {p.supplier_external_id && <div className="mb-3 rounded-[10px] px-3 py-2 text-[12px] font-semibold" style={{ backgroundColor: "#16a34a1a", color: "#16a34a" }}>CJ Order ID: {p.supplier_external_id}</div>}
                   {field("Order ID", p.order_number || p.order_id, true)}
                   {field("Supplier order status", syncDetail.row?.status)}
+
+                  {/* ── PLACE THIS ORDER ON CJ (manual fulfillment helper) ──
+                      Every value here comes straight from product_variants /
+                      supplier_products — the SAME real CJ ids the automated
+                      flow uses. Nothing here is invented: if a field is blank,
+                      that item genuinely has no verified CJ match yet and must
+                      NOT be ordered manually either. */}
+                  {!p.supplier_external_id && (p.items || []).length > 0 && (
+                    <div className="mt-3 pt-2">
+                      <p className={cn("text-[11px] font-bold uppercase tracking-wide mb-1", sub)}>Place This Order on CJ</p>
+                      {(p.items || []).map((it, i) => (
+                        <div key={i} className={cn("rounded-[10px] border p-3 mb-2", it.resolved ? "border-green-500/30" : "border-red-500/40")} style={{ backgroundColor: it.resolved ? "#16a34a0d" : "#dc26260d" }}>
+                          <div className={cn("text-[11px] font-bold mb-1.5", it.resolved ? "text-green-600" : "text-red-500")}>
+                            {it.resolved ? `✓ Item ${i + 1} — ready to search & order on CJ` : `✗ Item ${i + 1} — NOT ready, do not order manually`}
+                          </div>
+                          {field("Search CJ by Product ID", it.cj_product_id, true)}
+                          {field("Search CJ by SKU", it.sku, true)}
+                          {field("Exact variant to select", [it.color, it.size].filter(Boolean).join(" · ") || "—")}
+                          {field("CJ Variant ID (vid) — verify it matches", it.cj_variant_id, true)}
+                          {field("Quantity to order", it.quantity)}
+                          {!it.resolved && <div className="text-[11px] text-red-500 pt-1">No verified CJ variant for this line — run “Sync CJ Variants” first, or this item can't be matched to a real CJ listing yet.</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {(p.items || []).map((it, i) => (
                     <div key={i} className="mt-2">
                       {field(`Item ${i + 1} — CJ Product ID`, it.cj_product_id, true)}

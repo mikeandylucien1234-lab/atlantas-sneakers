@@ -119,6 +119,12 @@ export function AdminOrders({ dark }: Props) {
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [detailData, setDetailData] = useState<Record<string, any> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [trackingInput, setTrackingInput] = useState("");
+  const [carrierInput, setCarrierInput] = useState("");
+  useEffect(() => {
+    setTrackingInput(detailData?.tracking_number || "");
+    setCarrierInput(detailData?.carrier || "");
+  }, [detailData?.id]);
 
   const [statusEditId, setStatusEditId] = useState<string | null>(null);
   const [statusEditValue, setStatusEditValue] = useState("");
@@ -237,6 +243,34 @@ export function AdminOrders({ dark }: Props) {
       fetchKpis();
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Error", "error");
+    }
+  };
+
+  // ── MANUAL SHIPPING / TRACKING (for orders placed by hand on the supplier's
+  // site — there's no automated CJ sync for those, so the admin enters the
+  // tracking number + carrier here once the supplier provides it. Saving also
+  // bumps the order to "shipped" so the customer's /track page and timeline
+  // update immediately, matching what the automated CJ sync already does.) ──
+  const [trackingSaving, setTrackingSaving] = useState(false);
+  const handleSaveTracking = async (orderId: string, trackingNumber: string, carrier: string, currentStatus: string) => {
+    setTrackingSaving(true);
+    try {
+      const nextStatus = trackingNumber.trim() && !["shipped", "delivered", "cancelled"].includes(currentStatus) ? "shipped" : currentStatus;
+      const res = await fetch("/api/admin/orders", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, tracking_number: trackingNumber.trim() || null, carrier: carrier.trim() || null, status: nextStatus }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
+      showToast(trackingNumber.trim() ? "Tracking saved — customer can now see it" : "Tracking cleared");
+      fetchOrders();
+      fetchKpis();
+      if (detailData && detailData.id === orderId) {
+        setDetailData({ ...detailData, tracking_number: trackingNumber.trim() || null, carrier: carrier.trim() || null, status: nextStatus });
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Error", "error");
+    } finally {
+      setTrackingSaving(false);
     }
   };
 
@@ -776,6 +810,43 @@ export function AdminOrders({ dark }: Props) {
                             </select>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Shipping / Tracking — manual entry. For orders placed
+                          by hand on the supplier's site (no automated CJ sync),
+                          this is how the customer's /track page gets its data. */}
+                      <div className={cn("rounded-[14px] border p-4", p, brd)}>
+                        <p className={cn("text-[11px] font-bold uppercase tracking-wider mb-3", sub)}>Shipping / Tracking</p>
+                        {o.tracking_number && (
+                          <div className="mb-3 px-3 py-2 rounded-[10px] text-[12px] font-semibold" style={{ backgroundColor: "#16a34a1a", color: "#16a34a" }}>
+                            Customer can see this tracking on the site now.
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className={cn("text-[11px] font-semibold mb-1 block", sub)}>Tracking Number</label>
+                            <input
+                              type="text" value={trackingInput} onChange={(e) => setTrackingInput(e.target.value)}
+                              placeholder="e.g. YT2345678901234"
+                              className={cn("text-[13px] rounded-[8px] border px-3 py-2 w-full outline-none", inp)}
+                            />
+                          </div>
+                          <div>
+                            <label className={cn("text-[11px] font-semibold mb-1 block", sub)}>Carrier</label>
+                            <input
+                              type="text" value={carrierInput} onChange={(e) => setCarrierInput(e.target.value)}
+                              placeholder="e.g. YunExpress"
+                              className={cn("text-[13px] rounded-[8px] border px-3 py-2 w-full outline-none", inp)}
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="button" disabled={trackingSaving}
+                          onClick={() => handleSaveTracking(o.id, trackingInput, carrierInput, o.status)}
+                          className="mt-3 text-[12px] font-bold px-4 py-2 rounded-[10px] bg-[#2563eb] text-white disabled:opacity-50 cursor-pointer"
+                        >
+                          {trackingSaving ? "Saving…" : "Save Tracking"}
+                        </button>
                       </div>
 
                       {/* Summary */}

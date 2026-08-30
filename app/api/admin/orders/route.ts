@@ -327,7 +327,7 @@ export async function PUT(request: NextRequest) {
     return Response.json({ error: "Use the Refund action to issue a real refund — payment_status cannot be set to 'refunded' directly." }, { status: 400 });
   }
 
-  const allowedFields = ["status", "payment_status", "shipping_address", "tracking_number", "notes", "payment_method"];
+  const allowedFields = ["status", "payment_status", "shipping_address", "tracking_number", "carrier", "notes", "payment_method"];
   const filtered: Record<string, any> = {};
   for (const key of allowedFields) {
     if (updates[key] !== undefined) filtered[key] = updates[key];

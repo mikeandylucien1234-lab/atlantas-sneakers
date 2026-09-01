@@ -253,7 +253,7 @@ export class CJAdapter extends SupplierAdapter {
       });
       const images = p.productImageSet || (p.productImage ? [p.productImage] : []);
       return { ok: true, product: {
-        external_id: p.pid, name: p.productNameEn, description: p.description || p.productNameEn,
+        external_id: p.pid, sku: p.productSku || null, name: p.productNameEn, description: p.description || p.productNameEn,
         category_external: p.categoryName, supplier_price: Number(p.sellPrice) || 0, currency: "USD",
         main_image: p.productImage, images, videos: p.productVideo ? [p.productVideo] : [],
         weight: Number(p.productWeight) || null, dimensions: { length: p.packLength, width: p.packWidth, height: p.packHeight },

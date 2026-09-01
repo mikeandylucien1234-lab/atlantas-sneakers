@@ -227,8 +227,10 @@ export async function GET(request: NextRequest) {
 
         const productIds = products.map((p) => p.id);
 
-        // Get review stats and sales counts in parallel
-        const [reviewsRes, salesRes, flashDealsRes] = await Promise.all([
+        // Get review stats, sales counts, and the CJ product identity (Product
+        // ID + SKU, so an imported product's exact CJ listing is always
+        // visible for manual searching/ordering) in parallel.
+        const [reviewsRes, salesRes, flashDealsRes, supplierRes] = await Promise.all([
           supabase
             .from("reviews")
             .select("product_id, rating")
@@ -244,7 +246,22 @@ export async function GET(request: NextRequest) {
                 .eq("is_active", true)
                 .in("product_id", productIds)
             : Promise.resolve({ data: null }),
+          supabase
+            .from("supplier_products")
+            .select("imported_product_id, supplier_id, external_id, raw")
+            .in("imported_product_id", productIds)
+            .eq("imported", true),
         ]);
+
+        // Supplier (CJ) identity per product: real Product ID + real SKU only
+        // — never invented. `raw->sku` is the CJ product-level SKU captured at
+        // import/sync (variant SKUs are separate, already shown per-variant).
+        const supplierMap = new Map<string, { supplier_id: string; cj_product_id: string; cj_sku: string | null }>();
+        (supplierRes.data || []).forEach((sp: { imported_product_id: string; supplier_id: string; external_id: string; raw?: { sku?: string } }) => {
+          supplierMap.set(sp.imported_product_id, {
+            supplier_id: sp.supplier_id, cj_product_id: sp.external_id, cj_sku: sp.raw?.sku || null,
+          });
+        });
 
         // Review stats per product
         const reviewStats = new Map<
@@ -309,7 +326,7 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        // Search in SKU (variant level)
+        // Search in SKU (variant level + the CJ product-level SKU/Product ID)
         if (search) {
           const searchLower = search.toLowerCase();
           filteredProducts = filteredProducts.filter((p) => {
@@ -321,13 +338,19 @@ export async function GET(request: NextRequest) {
               (v: { sku: string }) =>
                 v.sku?.toLowerCase().includes(searchLower)
             );
-            return nameMatch || descMatch || skuMatch;
+            const cjSupplier = supplierMap.get(p.id);
+            const cjMatch = cjSupplier && (
+              cjSupplier.cj_sku?.toLowerCase().includes(searchLower) ||
+              cjSupplier.cj_product_id?.toLowerCase().includes(searchLower)
+            );
+            return nameMatch || descMatch || skuMatch || cjMatch;
           });
         }
 
         const enrichedProducts = filteredProducts.map((p) => {
           const rs = reviewStats.get(p.id);
           const sales = salesMap.get(p.id) || 0;
+          const supplier = supplierMap.get(p.id);
           return {
             ...p,
             reviewCount: rs?.count || 0,
@@ -335,6 +358,9 @@ export async function GET(request: NextRequest) {
               ? Math.round((rs.total / rs.count) * 10) / 10
               : 0,
             salesCount: sales,
+            supplier_id: supplier?.supplier_id || null,
+            cj_product_id: supplier?.cj_product_id || null,
+            cj_sku: supplier?.cj_sku || null,
           };
         });
 
@@ -388,7 +414,7 @@ export async function GET(request: NextRequest) {
       }
 
       const detail = await safeQuery(async () => {
-        const [productRes, reviewsRes, flashDealsRes, salesRes] =
+        const [productRes, reviewsRes, flashDealsRes, salesRes, supplierRes] =
           await Promise.all([
             supabase
               .from("products")
@@ -411,6 +437,12 @@ export async function GET(request: NextRequest) {
               .from("order_items")
               .select("quantity, price")
               .eq("product_id", id),
+            supabase
+              .from("supplier_products")
+              .select("supplier_id, external_id, raw")
+              .eq("imported_product_id", id)
+              .eq("imported", true)
+              .maybeSingle(),
           ]);
 
         if (!productRes.data) return null;
@@ -426,6 +458,7 @@ export async function GET(request: NextRequest) {
           0
         );
 
+        const sp = supplierRes.data as { supplier_id?: string; external_id?: string; raw?: { sku?: string } } | null;
         return {
           ...productRes.data,
           reviews: reviewsRes.data || [],
@@ -434,6 +467,9 @@ export async function GET(request: NextRequest) {
             totalSales,
             totalRevenue: Math.round(totalRevenue * 100) / 100,
           },
+          supplier_id: sp?.supplier_id || null,
+          cj_product_id: sp?.external_id || null,
+          cj_sku: sp?.raw?.sku || null,
         };
       }, null);
 

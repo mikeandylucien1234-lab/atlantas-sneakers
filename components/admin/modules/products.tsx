@@ -43,6 +43,9 @@ interface ProductRow extends Product {
   avgRating: number;
   reviewCount: number;
   hasFlashDeal: boolean;
+  supplier_id?: string | null;
+  cj_product_id?: string | null;
+  cj_sku?: string | null;
 }
 
 interface VariantRow {
@@ -819,6 +822,11 @@ export function AdminProducts({ dark, onNavigate }: Props) {
                                 {prod.name}
                               </button>
                               <p className={cn("text-[11px] truncate max-w-[200px]", sub)}>{prod.slug}</p>
+                              {prod.supplier_id && (prod.cj_sku || prod.cj_product_id) && (
+                                <p className={cn("text-[10px] font-mono truncate max-w-[200px]", sub)} title="CJ SKU / Product ID — real, from the supplier, never invented">
+                                  CJ: {prod.cj_sku || prod.cj_product_id}
+                                </p>
+                              )}
                               <div className="flex gap-1 mt-0.5">
                                 {prod.is_featured && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#8b5cf6]/10 text-[#8b5cf6]">FEATURED</span>}
                                 {prod.is_new && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#06b6d4]/10 text-[#06b6d4]">NEW</span>}
@@ -1132,6 +1140,17 @@ export function AdminProducts({ dark, onNavigate }: Props) {
                 <div>
                   <h2 className={cn("text-[16px] font-extrabold", txt)}>{detailProduct.name}</h2>
                   <p className={cn("text-[11px]", sub)}>{detailProduct.slug}</p>
+                  {(() => {
+                    const cjSku = detailData?.cj_sku as string | null | undefined;
+                    const cjProductId = detailData?.cj_product_id as string | null | undefined;
+                    if (!cjSku && !cjProductId) return null;
+                    return (
+                      <p className={cn("text-[11px] font-mono mt-0.5", sub)}>
+                        CJ SKU: <span className={txt}>{cjSku || "—"}</span>
+                        {" · "}Product ID: <span className={txt}>{cjProductId || "—"}</span>
+                      </p>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="flex items-center gap-2">

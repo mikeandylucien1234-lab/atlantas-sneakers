@@ -28,7 +28,7 @@ interface ProductKpis {
   archivedProducts: number;
   outOfStock: number;
   lowStock: number;
-  bestSellers: number;
+  bestSellers: { product_id: string; count: number }[];
   newProducts: number;
   flashDealProducts: number;
   averageRating: number;
@@ -59,7 +59,7 @@ interface VariantRow {
 
 const defaultKpis: ProductKpis = {
   totalProducts: 0, activeProducts: 0, draftProducts: 0, archivedProducts: 0,
-  outOfStock: 0, lowStock: 0, bestSellers: 0, newProducts: 0,
+  outOfStock: 0, lowStock: 0, bestSellers: [], newProducts: 0,
   flashDealProducts: 0, averageRating: 0, totalInventoryValue: 0,
   noImageProducts: 0, noCategoryProducts: 0,
 };
@@ -573,7 +573,7 @@ export function AdminProducts({ dark, onNavigate }: Props) {
     { key: "archivedProducts", label: "Archived", icon: Archive, value: kpis.archivedProducts, color: "#64748b" },
     { key: "outOfStock", label: "Out of Stock", icon: XCircle, value: kpis.outOfStock, color: "#ef4444" },
     { key: "lowStock", label: "Low Stock", icon: AlertTriangle, value: kpis.lowStock, color: "#f97316" },
-    { key: "bestSellers", label: "Best Sellers", icon: TrendingUp, value: kpis.bestSellers, color: "#8b5cf6" },
+    { key: "bestSellers", label: "Best Sellers", icon: TrendingUp, value: kpis.bestSellers.length, color: "#8b5cf6" },
     { key: "newProducts", label: "New Products", icon: Zap, value: kpis.newProducts, color: "#06b6d4" },
     { key: "flashDealProducts", label: "Flash Deals", icon: Zap, value: kpis.flashDealProducts, color: "#ec4899" },
     { key: "averageRating", label: "Avg Rating", icon: Star, value: kpis.averageRating.toFixed(1), color: "#eab308" },

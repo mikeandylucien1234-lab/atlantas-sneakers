@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, createContext, useCallback } from "react";
+import { useState, useEffect, createContext, useCallback, Component } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { AdminSidebar } from "@/components/admin/sidebar";
 import { AdminTopbar } from "@/components/admin/topbar";
@@ -19,6 +19,47 @@ function ModuleLoader() {
       <Loader2 className="w-7 h-7 animate-spin text-[#2563eb]" />
     </div>
   );
+}
+
+// Safety net for lazy-loaded modules: if a module's chunk fails to load
+// (network blip, a mismatched/missing file after a deploy) or the module
+// throws while rendering, React unmounts the whole page with NO fallback by
+// default — which is exactly what showed up as Safari's native "This page
+// couldn't load" crash screen instead of a clear, recoverable message. This
+// boundary catches it, shows the real error, and offers Retry without a full
+// page reload, so a single broken module never takes down the whole admin.
+type ModuleErrorBoundaryProps = { children: React.ReactNode };
+type ModuleErrorBoundaryState = { error: unknown };
+class ModuleErrorBoundary extends Component<ModuleErrorBoundaryProps, ModuleErrorBoundaryState> {
+  constructor(props: ModuleErrorBoundaryProps) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
+  }
+  componentDidCatch(error: unknown) {
+    console.error("[admin module crashed]", error);
+  }
+  render() {
+    const { error } = this.state;
+    if (error) {
+      return (
+        <div className="rounded-[16px] border border-red-200 bg-red-50 p-8 text-center">
+          <ShieldAlert className="w-8 h-8 text-red-500 mx-auto mb-3" />
+          <p className="text-[15px] font-bold text-[#16181d]">This section failed to load</p>
+          <p className="text-[12px] text-[#8a929c] mt-1 mb-4 break-all">{String((error as Error)?.message || error)}</p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="bg-[#2563eb] text-white font-bold text-[13px] py-2 px-5 rounded-[10px] hover:brightness-105 transition"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // Code-splitting: every admin module is loaded lazily so the initial /admin
@@ -297,7 +338,7 @@ export default function AdminPage() {
             onToggleSidebar={() => setSidebarOpen(true)}
             breadcrumb={moduleLabel(activeModule)}
           />
-          <main className="p-4 md:p-6">{renderModule()}</main>
+          <main className="p-4 md:p-6"><ModuleErrorBoundary key={activeModule}>{renderModule()}</ModuleErrorBoundary></main>
         </div>
 
         {toast && (

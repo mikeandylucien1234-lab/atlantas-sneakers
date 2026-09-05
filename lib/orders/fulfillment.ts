@@ -400,3 +400,18 @@ export async function dispatchSupplierOrders(orderId: string, opts: { logisticNa
     try { await s.from("orders").update({ fulfillment_status: "error", fulfillment_error: String(err?.message || err) }).eq("id", orderId); } catch {}
   }
 }
+
+// Manual-fulfillment mode: instead of auto-placing the supplier (CJ) order at
+// checkout, just flag the order as awaiting a human to place it manually
+// (Admin → Orders → "View Store" → place the CJ order by hand). This is
+// called where dispatchSupplierOrders(orderId) used to be called directly —
+// swap the call back if automatic dispatch should be re-enabled later.
+export async function markManualFulfillment(orderId: string): Promise<void> {
+  const s = (() => { try { return admin(); } catch { return null; } })();
+  if (!s) return;
+  try {
+    await s.from("orders").update({ fulfillment_status: "manual_pending" }).eq("id", orderId);
+  } catch (err) {
+    console.error("markManualFulfillment failed:", err);
+  }
+}

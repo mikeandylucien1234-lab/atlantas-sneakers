@@ -50,6 +50,7 @@ interface OrderRow {
   payment_method?: string;
   tracking_number?: string;
   notes?: string;
+  fulfillment_status?: string;
   customer?: { id: string; full_name: string | null; email: string; avatar_url: string | null; points: number; role: string };
   items?: any[];
 }
@@ -224,6 +225,22 @@ export function AdminOrders({ dark }: Props) {
       fetchKpis();
       if (detailData && detailData.id === orderId) {
         setDetailData({ ...detailData, status });
+      }
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Error", "error");
+    }
+  };
+
+  const handleFulfillmentChange = async (orderId: string, fulfillmentStatus: string) => {
+    try {
+      const res = await fetch("/api/admin/orders", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: orderId, fulfillment_status: fulfillmentStatus }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
+      showToast(`Fulfillment → ${fulfillmentStatus.replace(/_/g, " ")}`);
+      if (detailData && detailData.id === orderId) {
+        setDetailData({ ...detailData, fulfillment_status: fulfillmentStatus });
       }
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Error", "error");
@@ -910,30 +927,77 @@ export function AdminOrders({ dark }: Props) {
 
                 {/* ── ITEMS TAB ── */}
                 {detailTab === "items" && (() => {
-                  const items = (detailData || detailOrder).items || [];
+                  const o = detailData || detailOrder;
+                  const items = o.items || [];
+                  const fs = o.fulfillment_status || "manual_pending";
+                  const FS_LABEL: Record<string, string> = {
+                    manual_pending: "Manual fulfillment pending",
+                    manual_order_placed: "Manual order placed",
+                    shipped: "Shipped",
+                    delivered: "Delivered",
+                    submitted: "Submitted to supplier",
+                    error: "Fulfillment error",
+                  };
                   return (
                     <div className="space-y-3">
+                      <div className={cn("rounded-[12px] border p-3 flex items-center justify-between flex-wrap gap-2", p, brd)}>
+                        <div>
+                          <p className={cn("text-[11px] font-bold uppercase tracking-wider", sub)}>Manual Fulfillment</p>
+                          <p className={cn("text-[13px] font-semibold mt-0.5", txt)}>{FS_LABEL[fs] || fs}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleFulfillmentChange(o.id, "manual_order_placed")} className={cn("h-8 px-3 rounded-[9px] border text-[11px] font-semibold transition-colors", brd, txt, hover)}>
+                            Mark as Manual Order Placed
+                          </button>
+                          <button onClick={() => handleFulfillmentChange(o.id, "shipped")} className={cn("h-8 px-3 rounded-[9px] border text-[11px] font-semibold transition-colors", brd, txt, hover)}>
+                            Mark as Shipped
+                          </button>
+                        </div>
+                      </div>
                       <p className={cn("text-[11px] font-bold uppercase tracking-wider", sub)}>{items.length} Product{items.length !== 1 ? "s" : ""}</p>
                       {items.length === 0 ? (
                         <p className={cn("text-sm py-6 text-center", sub)}>No items in this order.</p>
                       ) : (
                         <div className="space-y-2">
-                          {items.map((item: any, i: number) => (
-                            <div key={item.id || i} className={cn("rounded-[12px] border p-3 flex items-center gap-3", p, brd)}>
-                              <div className={cn("w-12 h-12 rounded-[10px] overflow-hidden shrink-0 flex items-center justify-center", dark ? "bg-[#252c36]" : "bg-[#f6f8fb]")}>
-                                {item.product?.images?.[0] ? (
-                                  <img src={item.product.images[0]} alt="" className="w-12 h-12 object-cover" />
-                                ) : (
-                                  <Box className={cn("w-5 h-5", sub)} />
-                                )}
+                          {items.map((item: any, i: number) => {
+                            const sup = item.supplier;
+                            const supplierUrl = sup?.supplier_url || null;
+                            const isHttps = (() => { try { return supplierUrl && new URL(supplierUrl).protocol === "https:"; } catch { return false; } })();
+                            return (
+                            <div key={item.id || i} className={cn("rounded-[12px] border p-3", p, brd)}>
+                              <div className="flex items-center gap-3">
+                                <div className={cn("w-12 h-12 rounded-[10px] overflow-hidden shrink-0 flex items-center justify-center", dark ? "bg-[#252c36]" : "bg-[#f6f8fb]")}>
+                                  {item.product?.images?.[0] ? (
+                                    <img src={item.product.images[0]} alt="" className="w-12 h-12 object-cover" />
+                                  ) : (
+                                    <Box className={cn("w-5 h-5", sub)} />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className={cn("text-[13px] font-semibold truncate", txt)}>{item.product?.name || "Unknown Product"}</p>
+                                  <p className={cn("text-[11px]", sub)}>Qty: {item.quantity} × {fmtCurrency(item.price)}{item.variant ? ` · ${[item.variant.color, item.variant.size].filter(Boolean).join(" / ")}` : ""}{item.variant?.sku ? ` · SKU ${item.variant.sku}` : ""}</p>
+                                </div>
+                                <p className={cn("text-[14px] font-bold shrink-0", txt)}>{fmtCurrency(item.quantity * item.price)}</p>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <p className={cn("text-[13px] font-semibold truncate", txt)}>{item.product?.name || "Unknown Product"}</p>
-                                <p className={cn("text-[11px]", sub)}>Qty: {item.quantity} × {fmtCurrency(item.price)}</p>
-                              </div>
-                              <p className={cn("text-[14px] font-bold shrink-0", txt)}>{fmtCurrency(item.quantity * item.price)}</p>
+                              {sup && (
+                                <div className={cn("mt-2.5 pt-2.5 border-t flex items-center justify-between flex-wrap gap-2", brd)}>
+                                  <div className={cn("text-[11px]", sub)}>
+                                    Supplier: <span className={cn("font-semibold", txt)}>{sup.supplier_name}</span>
+                                    {sup.supplier_product_id && <> · Product ID: <span className={txt}>{sup.supplier_product_id}</span></>}
+                                    {sup.supplier_variant_id && <> · Variant ID: <span className={txt}>{sup.supplier_variant_id}</span></>}
+                                  </div>
+                                  {isHttps ? (
+                                    <button onClick={() => window.open(supplierUrl, "_blank", "noopener,noreferrer")} className="h-8 px-3 rounded-[9px] bg-[#2563eb] text-white text-[11px] font-semibold hover:bg-[#1d4ed8] transition-colors flex items-center gap-1.5">
+                                      <ExternalLink className="w-3.5 h-3.5" /> View Store
+                                    </button>
+                                  ) : (
+                                    <span className={cn("text-[11px] italic", sub)}>Source unavailable — configure in Admin → Products</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>

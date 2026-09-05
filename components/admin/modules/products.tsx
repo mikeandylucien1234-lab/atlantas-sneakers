@@ -1267,6 +1267,7 @@ function DetailTabContent({ tab, product, data, dark }: {
           </div>
           <DetailField label="Tags" value={product.tags?.join(", ") || "None"} dark={dark} />
           <DetailField label="Created" value={new Date(product.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })} dark={dark} />
+          <SupplierSourceCard product={product} data={detail} dark={dark} />
         </div>
       );
 
@@ -1459,6 +1460,141 @@ function DetailTabContent({ tab, product, data, dark }: {
     default:
       return <p className={cn("text-sm", sub)}>Coming soon.</p>;
   }
+}
+
+// ──────────────────────────── SUPPLIER / PRODUCT SOURCE ────────────────────────────
+// "View Store" — opens the exact original supplier (e.g. CJdropshipping) product
+// page so Admin can place the fulfillment order manually. Never auto-generated:
+// the supplier's API doesn't expose an official product URL, so it's entered
+// once by an admin here and reused on this page and on every Order that
+// contains this product.
+
+function isSafeHttpsUrl(u: string): boolean {
+  try {
+    const p = new URL(u);
+    return p.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function SupplierSourceCard({ product, data, dark }: { product: Product; data: Record<string, unknown> | null; dark: boolean }) {
+  const txt = dark ? "text-[#e7ebf0]" : "text-[#16181d]";
+  const sub = dark ? "text-[#8b95a3]" : "text-[#8a929c]";
+  const brd = dark ? "border-[#252c36]" : "border-[#eef0f3]";
+  const p = dark ? "bg-[#1d242e]" : "bg-[#f6f8fb]";
+
+  const supplierName = (data?.supplier_name as string | null) || (data?.supplier_id as string | null);
+  const supplierId = (data?.supplier_id as string | null) || "cj";
+  const productId = (data?.cj_product_id as string | null) || null;
+  const supplierUrl = (data?.supplier_url as string | null) || null;
+
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [urlInput, setUrlInput] = useState(supplierUrl || "");
+  const [idInput, setIdInput] = useState(productId || "");
+  const [err, setErr] = useState("");
+
+  const save = async () => {
+    setErr("");
+    if (urlInput.trim() && !isSafeHttpsUrl(urlInput.trim())) {
+      setErr("Enter a valid https:// URL.");
+      return;
+    }
+    setSaving(true);
+    const body = {
+      ids: [product.id],
+      action: "configure_supplier_source",
+      value: { supplier_id: supplierId, supplier_url: urlInput.trim(), supplier_product_id: idInput.trim() },
+    };
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch {
+      // Host blocks PATCH (o2switch) — fall back to a direct authenticated write.
+      try {
+        const supabase = createClient();
+        const { data: existing } = await supabase
+          .from("supplier_products")
+          .select("id")
+          .eq("imported_product_id", product.id)
+          .eq("supplier_id", supplierId)
+          .maybeSingle();
+        if (existing) {
+          await supabase.from("supplier_products").update({ supplier_url: urlInput.trim() || null }).eq("id", existing.id);
+        } else {
+          await supabase.from("supplier_products").insert({
+            supplier_id: supplierId,
+            imported_product_id: product.id,
+            external_id: idInput.trim() || `manual-${product.id}`,
+            supplier_url: urlInput.trim() || null,
+            imported: true,
+          });
+        }
+      } catch (e: any) {
+        setErr(e?.message || "Failed to save.");
+        setSaving(false);
+        return;
+      }
+    }
+    setSaving(false);
+    setEditing(false);
+    window.location.reload();
+  };
+
+  const openStore = () => {
+    if (!supplierUrl || !isSafeHttpsUrl(supplierUrl)) return;
+    window.open(supplierUrl, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <div className={cn("rounded-[14px] border p-4", p, brd)}>
+      <p className={cn("text-[11px] font-bold uppercase tracking-wider mb-3", sub)}>Supplier / Product Source</p>
+
+      {!editing ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-4">
+            <DetailField label="Supplier" value={supplierName || "Not configured"} dark={dark} />
+            <DetailField label="Supplier Product ID" value={productId || "—"} dark={dark} />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            {supplierUrl ? (
+              <button onClick={openStore} className="h-9 px-3.5 rounded-[10px] bg-[#2563eb] text-white text-[12px] font-semibold hover:bg-[#1d4ed8] transition-colors flex items-center gap-1.5">
+                <ExternalLink className="w-3.5 h-3.5" /> View Store
+              </button>
+            ) : (
+              <span className={cn("text-[12px]", sub)}>Supplier source not configured</span>
+            )}
+            <button onClick={() => { setUrlInput(supplierUrl || ""); setIdInput(productId || ""); setEditing(true); }} className={cn("h-9 px-3.5 rounded-[10px] border text-[12px] font-semibold transition-colors", brd, txt)}>
+              {supplierUrl ? "Edit Source" : "Add Supplier URL"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <p className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", sub)}>Supplier Product ID</p>
+            <input value={idInput} onChange={(e) => setIdInput(e.target.value)} placeholder="e.g. CJ product id" className={cn("w-full h-9 px-3 rounded-[9px] border text-sm outline-none", brd, dark ? "bg-[#131820]" : "bg-white", txt)} />
+          </div>
+          <div>
+            <p className={cn("text-[11px] font-semibold uppercase tracking-wider mb-1", sub)}>Supplier URL (https://)</p>
+            <input value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://www.cjdropshipping.com/product/...html" className={cn("w-full h-9 px-3 rounded-[9px] border text-sm outline-none", brd, dark ? "bg-[#131820]" : "bg-white", txt)} />
+          </div>
+          {err && <p className="text-[12px] text-[#ef4444]">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => setEditing(false)} className={cn("h-9 px-3.5 rounded-[10px] border text-[12px] font-semibold", brd, txt)}>Cancel</button>
+            <button onClick={save} disabled={saving} className="h-9 px-3.5 rounded-[10px] bg-[#2563eb] text-white text-[12px] font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ──────────────────────────── DETAIL FIELD ────────────────────────────

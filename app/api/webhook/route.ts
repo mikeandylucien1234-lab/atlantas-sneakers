@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { stripe } from "@/lib/stripe";
-import { finalizeStripeOrder, dispatchSupplierOrders } from "@/lib/orders/fulfillment";
+import { finalizeStripeOrder, markManualFulfillment } from "@/lib/orders/fulfillment";
 
 // Stripe webhook — a BACKUP path for order creation. The primary path is the
 // client-driven /api/checkout/confirm route; both share finalizeStripeOrder and
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     try {
       const result = await finalizeStripeOrder(paymentIntent);
       if (result.created) {
-        await dispatchSupplierOrders(result.orderId);
+        await markManualFulfillment(result.orderId);
         console.log(`Order ${result.orderNumber} created via webhook for ${paymentIntent.id}`);
       }
       await log({

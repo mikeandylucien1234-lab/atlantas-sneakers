@@ -248,7 +248,7 @@ export async function GET(request: NextRequest) {
             : Promise.resolve({ data: null }),
           supabase
             .from("supplier_products")
-            .select("imported_product_id, supplier_id, external_id, raw")
+            .select("imported_product_id, supplier_id, external_id, supplier_url, raw")
             .in("imported_product_id", productIds)
             .eq("imported", true),
         ]);
@@ -256,10 +256,10 @@ export async function GET(request: NextRequest) {
         // Supplier (CJ) identity per product: real Product ID + real SKU only
         // — never invented. `raw->sku` is the CJ product-level SKU captured at
         // import/sync (variant SKUs are separate, already shown per-variant).
-        const supplierMap = new Map<string, { supplier_id: string; cj_product_id: string; cj_sku: string | null }>();
-        (supplierRes.data || []).forEach((sp: { imported_product_id: string; supplier_id: string; external_id: string; raw?: { sku?: string } }) => {
+        const supplierMap = new Map<string, { supplier_id: string; cj_product_id: string; cj_sku: string | null; supplier_url: string | null }>();
+        (supplierRes.data || []).forEach((sp: { imported_product_id: string; supplier_id: string; external_id: string; supplier_url?: string | null; raw?: { sku?: string } }) => {
           supplierMap.set(sp.imported_product_id, {
-            supplier_id: sp.supplier_id, cj_product_id: sp.external_id, cj_sku: sp.raw?.sku || null,
+            supplier_id: sp.supplier_id, cj_product_id: sp.external_id, cj_sku: sp.raw?.sku || null, supplier_url: sp.supplier_url || null,
           });
         });
 
@@ -361,6 +361,7 @@ export async function GET(request: NextRequest) {
             supplier_id: supplier?.supplier_id || null,
             cj_product_id: supplier?.cj_product_id || null,
             cj_sku: supplier?.cj_sku || null,
+            supplier_url: supplier?.supplier_url || null,
           };
         });
 
@@ -439,13 +440,19 @@ export async function GET(request: NextRequest) {
               .eq("product_id", id),
             supabase
               .from("supplier_products")
-              .select("supplier_id, external_id, raw")
+              .select("supplier_id, external_id, supplier_url, raw")
               .eq("imported_product_id", id)
               .eq("imported", true)
               .maybeSingle(),
           ]);
 
         if (!productRes.data) return null;
+
+        let supplierName: string | null = null;
+        if (supplierRes.data?.supplier_id) {
+          const { data: supRow } = await supabase.from("suppliers").select("name").eq("id", supplierRes.data.supplier_id).maybeSingle();
+          supplierName = supRow?.name || null;
+        }
 
         const salesData = salesRes.data || [];
         const totalSales = salesData.reduce(
@@ -458,7 +465,7 @@ export async function GET(request: NextRequest) {
           0
         );
 
-        const sp = supplierRes.data as { supplier_id?: string; external_id?: string; raw?: { sku?: string } } | null;
+        const sp = supplierRes.data as { supplier_id?: string; external_id?: string; supplier_url?: string | null; raw?: { sku?: string } } | null;
         return {
           ...productRes.data,
           reviews: reviewsRes.data || [],
@@ -468,8 +475,10 @@ export async function GET(request: NextRequest) {
             totalRevenue: Math.round(totalRevenue * 100) / 100,
           },
           supplier_id: sp?.supplier_id || null,
+          supplier_name: supplierName,
           cj_product_id: sp?.external_id || null,
           cj_sku: sp?.raw?.sku || null,
+          supplier_url: sp?.supplier_url || null,
         };
       }, null);
 
@@ -762,6 +771,51 @@ export async function PATCH(request: NextRequest) {
           .in("id", ids);
         if (error)
           return Response.json({ error: error.message }, { status: 400 });
+        break;
+      }
+      case "configure_supplier_source": {
+        // Admin-entered "where this product actually comes from" — the exact
+        // source/fournisseur URL used by "View Store" on Products + Orders.
+        // Never auto-guessed: CJ's API does not return an official product
+        // page URL, so this is set once by a human and reused everywhere.
+        if (ids.length !== 1) {
+          return Response.json({ error: "configure_supplier_source takes exactly one product id" }, { status: 400 });
+        }
+        const productId = ids[0];
+        const supplierId = String(value?.supplier_id || "").trim();
+        const supplierUrl = String(value?.supplier_url || "").trim();
+        if (!supplierId) return Response.json({ error: "supplier_id is required" }, { status: 400 });
+        if (supplierUrl) {
+          let parsed: URL;
+          try { parsed = new URL(supplierUrl); } catch { return Response.json({ error: "Invalid supplier URL" }, { status: 400 }); }
+          if (parsed.protocol !== "https:") {
+            return Response.json({ error: "Supplier URL must use https://" }, { status: 400 });
+          }
+        }
+        const { data: existing } = await supabase
+          .from("supplier_products")
+          .select("id")
+          .eq("imported_product_id", productId)
+          .eq("supplier_id", supplierId)
+          .maybeSingle();
+        if (existing) {
+          const { error } = await supabase
+            .from("supplier_products")
+            .update({ supplier_url: supplierUrl || null })
+            .eq("id", existing.id);
+          if (error) return Response.json({ error: error.message }, { status: 400 });
+        } else {
+          const { error } = await supabase
+            .from("supplier_products")
+            .insert({
+              supplier_id: supplierId,
+              imported_product_id: productId,
+              external_id: String(value?.supplier_product_id || "").trim() || `manual-${productId}`,
+              supplier_url: supplierUrl || null,
+              imported: true,
+            });
+          if (error) return Response.json({ error: error.message }, { status: 400 });
+        }
         break;
       }
       case "update_category": {

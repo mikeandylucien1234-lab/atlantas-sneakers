@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { finalizeStripeOrder, dispatchSupplierOrders } from "@/lib/orders/fulfillment";
+import { finalizeStripeOrder, markManualFulfillment } from "@/lib/orders/fulfillment";
 
 // Server-side finalization for Stripe payments. The client calls this right
 // after stripe.confirmPayment() succeeds, so the order is created reliably even
@@ -50,8 +50,9 @@ export async function POST(request: NextRequest) {
 
     const result = await finalizeStripeOrder(pi, { shippingAddress });
 
-    // Fire-and-forget supplier dispatch (never blocks the response / the order).
-    dispatchSupplierOrders(result.orderId).catch(() => {});
+    // Manual fulfillment mode: flag for a human to place the CJ order by hand
+    // (Admin → Orders → View Store), never auto-dispatch to the supplier.
+    markManualFulfillment(result.orderId).catch(() => {});
 
     return Response.json({ orderId: result.orderId, orderNumber: result.orderNumber });
   } catch (err: any) {

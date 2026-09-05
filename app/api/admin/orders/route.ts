@@ -174,6 +174,50 @@ export async function GET(request: NextRequest) {
 
     if (!order) return Response.json({ error: "Order not found" }, { status: 404 });
 
+    // Enrich each order item with its supplier/source identity — Product ID,
+    // Variant ID, SKU and the exact supplier product URL — so Admin can open
+    // "View Store" per item and place the CJ (or future supplier) order
+    // manually. Never invented: only what was actually captured at import.
+    const productIds = [...new Set((order.items || []).map((it) => it.product_id).filter(Boolean))];
+    if (productIds.length) {
+      const { data: supplierRows } = await safeQuery(
+        async () => await supabase
+          .from("supplier_products")
+          .select("imported_product_id, supplier_id, external_id, supplier_url, raw")
+          .in("imported_product_id", productIds)
+          .eq("imported", true),
+        { data: [] }
+      );
+      const supplierIds = [...new Set((supplierRows || []).map((sp) => sp.supplier_id).filter(Boolean))];
+      let supplierNames = new Map();
+      if (supplierIds.length) {
+        const { data: supRows } = await safeQuery(
+          async () => await supabase.from("suppliers").select("id, name").in("id", supplierIds),
+          { data: [] }
+        );
+        supplierNames = new Map((supRows || []).map((s) => [s.id, s.name]));
+      }
+      const supplierByProduct = new Map((supplierRows || []).map((sp) => [sp.imported_product_id, sp]));
+      order.items = (order.items || []).map((it) => {
+        const sp = supplierByProduct.get(it.product_id);
+        if (!sp) return { ...it, supplier: null };
+        return {
+          ...it,
+          supplier: {
+            supplier_id: sp.supplier_id,
+            supplier_name: supplierNames.get(sp.supplier_id) || sp.supplier_id,
+            supplier_product_id: sp.external_id || null,
+            supplier_variant_id: it.variant?.sku && sp.raw?.variants
+              ? (sp.raw.variants.find((v) => v.sku === it.variant.sku)?.vid
+                || sp.raw.variants.find((v) => v.sku === it.variant.sku)?.variantId
+                || null)
+              : null,
+            supplier_url: sp.supplier_url || null,
+          },
+        };
+      });
+    }
+
     // Fetch customer profile
     let customer = null;
     if (order.user_id) {
@@ -331,6 +375,18 @@ export async function PUT(request: NextRequest) {
   const filtered: Record<string, any> = {};
   for (const key of allowedFields) {
     if (updates[key] !== undefined) filtered[key] = updates[key];
+  }
+
+  // Manual fulfillment status — set only by an admin action here, never
+  // fabricated by any automation. Restricted to the known manual-workflow
+  // states so this can't be used to fake "submitted" (which would imply an
+  // automatic supplier order was actually created).
+  const MANUAL_FULFILLMENT_STATES = ["manual_pending", "manual_order_placed", "shipped", "delivered"];
+  if (updates.fulfillment_status !== undefined) {
+    if (!MANUAL_FULFILLMENT_STATES.includes(updates.fulfillment_status)) {
+      return Response.json({ error: "Invalid fulfillment_status" }, { status: 400 });
+    }
+    filtered.fulfillment_status = updates.fulfillment_status;
   }
 
   if (Object.keys(filtered).length === 0) {

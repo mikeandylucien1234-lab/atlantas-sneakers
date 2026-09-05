@@ -50,6 +50,7 @@ import {
   Menu,
   Megaphone,
   Layout,
+  Share2,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -107,6 +108,7 @@ const navGroups: NavGroup[] = [
       { id: "media", label: "Media", icon: MediaIcon },
       { id: "faq", label: "FAQ", icon: HelpCircle },
       { id: "emails", label: "Emails", icon: Mail },
+      { id: "socialmedia", label: "Social Media", icon: Share2 },
     ],
   },
   {

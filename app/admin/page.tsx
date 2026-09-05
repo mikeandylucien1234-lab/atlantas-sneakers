@@ -118,6 +118,7 @@ const AdminHomepageCategories = dynamic(() => import("@/components/admin/modules
 const AdminHomepageNavTabs = dynamic(() => import("@/components/admin/modules/homepage-nav-tabs").then((m) => m.AdminHomepageNavTabs), { loading: ModuleLoader, ssr: false });
 const AdminMenLanding = dynamic(() => import("@/components/admin/modules/men-landing").then((m) => m.AdminMenLanding), { loading: ModuleLoader, ssr: false });
 const AdminAnnouncementBar = dynamic(() => import("@/components/admin/modules/announcement-bar").then((m) => m.AdminAnnouncementBar), { loading: ModuleLoader, ssr: false });
+const AdminSocialMedia = dynamic(() => import("@/components/admin/modules/social-media").then((m) => m.AdminSocialMedia), { loading: ModuleLoader, ssr: false });
 
 type Toast = { message: string; type: "success" | "info" | "warn" } | null;
 
@@ -237,6 +238,8 @@ export default function AdminPage() {
         return <AdminMedia dark={dark} />;
       case "faq":
         return <AdminFaq dark={dark} />;
+      case "socialmedia":
+        return <AdminSocialMedia dark={dark} />;
       case "shipping":
         return <AdminShipping dark={dark} />;
       case "returns":

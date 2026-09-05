@@ -10,6 +10,7 @@ import { useWishlistStore } from "@/lib/store/wishlist-store";
 import { ProductCard } from "@/components/ui/product-card";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
 import { NewsletterSection } from "@/components/sections/newsletter-section";
+import { SocialFollowSection } from "@/components/sections/social-follow-section";
 import { BeautyShopByCategory } from "@/components/landing/beauty-shop-category";
 import { CurveShopByCategory } from "@/components/landing/curve-shop-category";
 import {
@@ -574,6 +575,7 @@ export function LandingPage({ page }: { page: string }) {
   return (
     <div className="space-y-10">
       {order.filter(vis).map((key) => <section key={key}>{render(key)}</section>)}
+      <SocialFollowSection />
     </div>
   );
 }

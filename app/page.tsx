@@ -5,7 +5,7 @@ import { FeatureCards } from "@/components/sections/feature-cards";
 import { ShopByCategory } from "@/components/sections/shop-by-category";
 import { DealsRanking } from "@/components/sections/deals-ranking";
 import { TrendingNow } from "@/components/sections/trending-now";
-import { FlashSales } from "@/components/sections/flash-sales";
+import { RecommendedForYou } from "@/components/sections/recommended-for-you";
 import { BestSellersNewArrivals } from "@/components/sections/best-sellers-new-arrivals";
 import { SpecialOffers } from "@/components/sections/special-offers";
 import { InfoDisclosure } from "@/components/sections/info-disclosure";
@@ -20,7 +20,7 @@ export default function HomePage() {
       <DealsRanking />
       <TrendingNow />
       <BestSellersNewArrivals middle={<SpecialOffers />} />
-      <FlashSales />
+      <RecommendedForYou />
       <PromoSuggestions />
       <InfoDisclosure />
     </>

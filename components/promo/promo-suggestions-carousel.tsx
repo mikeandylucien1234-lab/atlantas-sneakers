@@ -41,6 +41,10 @@ export function PromoSuggestionsCarousel({ cards, onDismiss, className, stackOff
   const [leaving, setLeaving] = useState<Set<string>>(new Set());
   const [stack, setStack] = useState<Record<string, { scale: number; dim: number }>>({});
   const [baseTop, setBaseTop] = useState(16);
+  // Desktop (lg+): cards sit side by side on one row, no scroll-driven stack.
+  // Mobile keeps the sticky card-stack exactly as before — this flag only
+  // ever changes what's rendered at >=1024px.
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const rafRef = useRef<number | null>(null);
@@ -76,8 +80,18 @@ export function PromoSuggestionsCarousel({ cards, onDismiss, className, stackOff
     return () => window.removeEventListener("resize", measure);
   }, []);
 
+  // Track the lg breakpoint to switch to the side-by-side desktop layout.
+  useIso(() => {
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setIsDesktop(mql.matches);
+    apply();
+    mql.addEventListener("change", apply);
+    return () => mql.removeEventListener("change", apply);
+  }, []);
+
   // How much each card is covered by the next one → scale + dim.
   const recompute = useCallback(() => {
+    if (isDesktop) return; // no scroll-driven stacking on the desktop row layout
     const ids = visible.map((c) => c.id);
     const next: Record<string, { scale: number; dim: number }> = {};
     for (let i = 0; i < ids.length; i++) {
@@ -93,7 +107,7 @@ export function PromoSuggestionsCarousel({ cards, onDismiss, className, stackOff
       next[ids[i]] = { scale: 1 - covered * 0.04, dim: covered * 0.32 };
     }
     setStack(next);
-  }, [visible]);
+  }, [visible, isDesktop]);
 
   const schedule = useCallback(() => {
     if (rafRef.current != null) return;
@@ -118,11 +132,12 @@ export function PromoSuggestionsCarousel({ cards, onDismiss, className, stackOff
   if (visible.length === 0) return null;
 
   return (
-    <div className={`flex flex-col ${className ?? ""}`}>
+    <div className={`flex flex-col lg:flex-row lg:flex-wrap lg:gap-4 lg:items-start ${className ?? ""}`}>
       {visible.map((card, i) => {
         const isLeaving = leaving.has(card.id);
         const st = stack[card.id] ?? { scale: 1, dim: 0 };
-        const scale = isLeaving ? 0.95 : st.scale;
+        const scale = isDesktop ? 1 : (isLeaving ? 0.95 : st.scale);
+        const dim = isDesktop ? 0 : st.dim;
         const isLast = i === visible.length - 1;
         return (
           <div
@@ -131,8 +146,12 @@ export function PromoSuggestionsCarousel({ cards, onDismiss, className, stackOff
               if (el) cardRefs.current.set(card.id, el);
               else cardRefs.current.delete(card.id);
             }}
-            className={isLast ? "sticky" : "sticky pb-4"}
-            style={{ top: `${baseTop + i * stackOffset}px`, zIndex: i + 1 }}
+            className={
+              isDesktop
+                ? "relative lg:flex-1 lg:basis-[280px] lg:min-w-[240px]"
+                : (isLast ? "sticky" : "sticky pb-4")
+            }
+            style={isDesktop ? undefined : { top: `${baseTop + i * stackOffset}px`, zIndex: i + 1 }}
           >
             <div
               className="relative overflow-hidden rounded-3xl shadow-xl shadow-black/15 will-change-transform transition-[transform,opacity] duration-[260ms] ease-out"
@@ -160,7 +179,7 @@ export function PromoSuggestionsCarousel({ cards, onDismiss, className, stackOff
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0 bg-black transition-opacity duration-150"
-                style={{ opacity: st.dim }}
+                style={{ opacity: dim }}
               />
 
               {/* Transparent dismiss hit-area over the artwork's painted X */}

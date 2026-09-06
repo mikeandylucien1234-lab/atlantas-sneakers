@@ -51,6 +51,8 @@ interface OrderRow {
   tracking_number?: string;
   notes?: string;
   fulfillment_status?: string;
+  shipping_needs_review?: boolean;
+  shipping_quote_source?: string;
   customer?: { id: string; full_name: string | null; email: string; avatar_url: string | null; points: number; role: string };
   items?: any[];
 }
@@ -940,6 +942,15 @@ export function AdminOrders({ dark }: Props) {
                   };
                   return (
                     <div className="space-y-3">
+                      {o.shipping_needs_review && (
+                        <div className="rounded-[12px] border border-[#ea7317] bg-[#ea7317]/10 p-3 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-[#ea7317] shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-[12px] font-bold text-[#ea7317]">Shipping cost estimated — verify before placing the CJ order</p>
+                            <p className={cn("text-[11px] mt-0.5", sub)}>Real-time CJ freight wasn't available when this order was charged (${Number(o.shipping_cost || 0).toFixed(2)} charged, weight-based estimate + safety margin). Confirm the real CJ shipping cost via View Store before manually placing this order.</p>
+                          </div>
+                        </div>
+                      )}
                       <div className={cn("rounded-[12px] border p-3 flex items-center justify-between flex-wrap gap-2", p, brd)}>
                         <div>
                           <p className={cn("text-[11px] font-bold uppercase tracking-wider", sub)}>Manual Fulfillment</p>

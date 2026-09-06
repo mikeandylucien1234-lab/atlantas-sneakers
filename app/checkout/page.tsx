@@ -231,7 +231,36 @@ export default function CheckoutPage() {
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const selectedShipping = shippingOptions.find((o) => o.id === shippingMethod)!;
-  const shippingCost = selectedShipping.freeAbove && subtotal >= selectedShipping.freeAbove ? 0 : selectedShipping.price;
+
+  // Real CJ-based shipping options (weight + destination aware) — replaces the
+  // flat guessed fee once the address is known. Falls back to the static
+  // table above until then / if the quote can't be fetched, so the step
+  // always shows *something* reasonable, never breaks.
+  type RealShippingOption = { method: string; label: string; cost: number; etaDays: string | null; source: string; needsReview: boolean };
+  const [realShippingOptions, setRealShippingOptions] = useState<RealShippingOption[] | null>(null);
+  useEffect(() => {
+    if (items.length === 0 || !country || !address || !city) { setRealShippingOptions(null); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/checkout/shipping-quote", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity })),
+            shippingAddress: { country, postalCode },
+          }),
+        });
+        if (res.ok) { const d = await res.json(); setRealShippingOptions(d.options || null); }
+        else setRealShippingOptions(null);
+      } catch { setRealShippingOptions(null); }
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country, postalCode, address, city, items]);
+
+  const realSelected = realShippingOptions?.find((o) => o.method === shippingMethod) || null;
+  const shippingCost = realSelected
+    ? realSelected.cost
+    : (selectedShipping.freeAbove && subtotal >= selectedShipping.freeAbove ? 0 : selectedShipping.price);
 
   // Real-time tax preview via the shared engine
   const [taxPreview, setTaxPreview] = useState(0);
@@ -559,19 +588,25 @@ export default function CheckoutPage() {
               <h2 className="text-[18px] font-extrabold text-[#16181d] mb-5">Shipping Method</h2>
               <div className="space-y-2.5">
                 {shippingOptions.map((opt) => {
-                  const isFree = opt.freeAbove && subtotal >= opt.freeAbove;
+                  const real = realShippingOptions?.find((o) => o.method === opt.id);
+                  const isFree = !real && opt.freeAbove && subtotal >= opt.freeAbove;
+                  const displayCost = real ? real.cost : opt.price;
+                  const displayTime = real?.etaDays ? `${real.etaDays} · estimated` : opt.time;
                   return (
                     <label key={opt.id} className={cn("flex items-center gap-3 p-4 rounded-[12px] border-[1.5px] cursor-pointer transition-colors", shippingMethod === opt.id ? "border-[#2563eb] bg-[#eff6ff]" : "border-[#e4e7eb] hover:border-[#2563eb]")}>
                       <input type="radio" name="shipping" value={opt.id} checked={shippingMethod === opt.id} onChange={() => setShippingMethod(opt.id)} className="accent-[#2563eb] w-[18px] h-[18px]" />
                       <Truck className="w-5 h-5 text-[#5b6472] shrink-0" />
                       <div className="flex-1">
                         <div className="text-[14px] font-bold text-[#16181d]">{opt.label}</div>
-                        <div className="text-[12px] text-[#5b6472]">{opt.time}</div>
+                        <div className="text-[12px] text-[#5b6472]">{displayTime}</div>
                       </div>
-                      <span className="text-[14px] font-bold text-[#16181d]">{isFree ? "FREE" : `$${opt.price.toFixed(2)}`}</span>
+                      <span className="text-[14px] font-bold text-[#16181d]">{isFree ? "FREE" : `$${displayCost.toFixed(2)}`}</span>
                     </label>
                   );
                 })}
+                {!realShippingOptions && (
+                  <p className="text-[11px] text-[#8a929c] pt-1">Final shipping cost is confirmed at checkout based on your exact address.</p>
+                )}
               </div>
               <div className="flex gap-3 mt-6">
                 <Button variant="outline" size="lg" onClick={() => setStep(0)}>Back</Button>

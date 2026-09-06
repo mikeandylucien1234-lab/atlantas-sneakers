@@ -44,6 +44,8 @@ export async function finalizeStripeOrder(
 
   const subtotal = Number(md.subtotal || 0);
   const shippingCost = Number(md.shippingCost || 0);
+  const shippingSource = md.shippingSource || null;
+  const shippingNeedsReview = md.shippingNeedsReview === "true";
   const discount = Number(md.discount || 0);
   const total = typeof paymentIntent.amount === "number" ? paymentIntent.amount / 100 : subtotal + shippingCost - discount;
   const orderNumber = `AS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
@@ -57,6 +59,8 @@ export async function finalizeStripeOrder(
       payment_status: "paid",
       subtotal,
       shipping_cost: shippingCost,
+      shipping_quote_source: shippingSource,
+      shipping_needs_review: shippingNeedsReview,
       discount,
       total,
       payment_method: "stripe",

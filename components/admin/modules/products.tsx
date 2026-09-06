@@ -1488,6 +1488,9 @@ function SupplierSourceCard({ product, data, dark }: { product: Product; data: R
   const supplierId = (data?.supplier_id as string | null) || "cj";
   const productId = (data?.cj_product_id as string | null) || null;
   const supplierUrl = (data?.supplier_url as string | null) || null;
+  const supplierCost = data?.supplier_cost as number | null | undefined;
+  const supplierWeight = data?.supplier_weight as number | null | undefined;
+  const supplierSyncedAt = data?.supplier_synced_at as string | null | undefined;
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1561,6 +1564,14 @@ function SupplierSourceCard({ product, data, dark }: { product: Product; data: R
             <DetailField label="Supplier" value={supplierName || "Not configured"} dark={dark} />
             <DetailField label="Supplier Product ID" value={productId || "—"} dark={dark} />
           </div>
+          <div className="grid grid-cols-3 gap-4">
+            <DetailField label="Supplier Cost" value={supplierCost != null ? `$${Number(supplierCost).toFixed(2)}` : "—"} dark={dark} />
+            <DetailField label="Weight" value={supplierWeight != null ? `${supplierWeight} kg` : "Unknown"} dark={dark} />
+            <DetailField label="Last Price Sync" value={supplierSyncedAt ? new Date(supplierSyncedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"} dark={dark} />
+          </div>
+          {supplierWeight == null && supplierName && (
+            <p className={cn("text-[11px]", sub)}>No weight on file yet for this product — real-time shipping quotes fall back to a conservative estimate until CJ variants are synced.</p>
+          )}
           <div className="flex items-center gap-2 pt-1">
             {supplierUrl ? (
               <button onClick={openStore} className="h-9 px-3.5 rounded-[10px] bg-[#2563eb] text-white text-[12px] font-semibold hover:bg-[#1d4ed8] transition-colors flex items-center gap-1.5">

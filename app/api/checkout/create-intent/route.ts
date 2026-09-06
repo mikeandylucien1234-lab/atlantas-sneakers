@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { getAuthoritativeShippingCost } from "@/lib/shipping/quote";
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,11 +88,17 @@ export async function POST(request: NextRequest) {
       subtotal += dbPrice * item.quantity;
     }
 
-    // Calculate shipping server-side: free over $100 for standard, otherwise $9.99
-    let shippingCost: number;
-    if (shippingMethod === "express") shippingCost = 19.99;
-    else if (shippingMethod === "overnight") shippingCost = 39.99;
-    else shippingCost = subtotal >= 100 ? 0 : 9.99;
+    // Calculate shipping server-side using the REAL CJ freight (weight +
+    // destination) whenever the cart contains a CJ-sourced item, never a flat
+    // fee that could be lower than what CJ actually charges. See
+    // lib/shipping/quote.ts for the fallback behavior when CJ can't be reached.
+    const shippingQuote = await getAuthoritativeShippingCost({
+      items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity })),
+      shippingAddress: shippingAddress || {},
+      shippingMethod: shippingMethod || "standard",
+      subtotal,
+    });
+    const shippingCost = shippingQuote.cost;
 
     let discount = 0;
     let couponData = null;
@@ -134,6 +141,8 @@ export async function POST(request: NextRequest) {
         itemCount: String(items.length),
         couponCode: couponCode ?? "",
         shippingCost: String(shippingCost),
+        shippingSource: shippingQuote.source,
+        shippingNeedsReview: String(shippingQuote.needsReview),
         discount: String(discount),
         subtotal: String(subtotal),
         items: JSON.stringify(items.map((i) => ({ pid: i.productId, vid: i.variantId, qty: i.quantity, price: i.price }))),

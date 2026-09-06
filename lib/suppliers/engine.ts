@@ -130,7 +130,7 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
   // Variants
   const variants = overrides.variants || detail.variants || [];
   for (const v of variants) {
-    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, sku: v.sku || null, stock: v.stock ?? 0, image_url: v.image || v.variantImage || null, external_variant_id: v.external_variant_id || null }).then(() => {}, () => {});
+    await s.from("product_variants").insert({ product_id: product.id, size: v.size || null, color: v.color || null, color_hex: v.color_hex || null, sku: v.sku || null, stock: v.stock ?? 0, image_url: v.image || v.variantImage || null, external_variant_id: v.external_variant_id || null, weight: v.weight != null ? Number(v.weight) || null : null }).then(() => {}, () => {});
   }
   // Image records (source stored; local re-hosting/webp is an optional enhancement)
   for (let i = 0; i < images.length; i++) {
@@ -198,13 +198,17 @@ export async function syncProductVariants({ supplierId = "cj", productId = null,
           if (v.color && !existing.color) patch.color = v.color;
           if (v.size && !existing.size) patch.size = v.size;
           if (v.color_hex && !existing.color_hex) patch.color_hex = v.color_hex;
+          // Weight can legitimately change at CJ (corrected listing) — always
+          // refresh it when CJ reports one, since a stale weight is exactly
+          // what causes the real freight to be under-estimated.
+          if (v.weight != null) patch.weight = Number(v.weight) || null;
           if (Object.keys(patch).length) { await s.from("product_variants").update(patch).eq("id", existing.id); variantsUpdated++; }
         } else {
           // CJ variant we didn't have yet → additive insert (never a delete).
           await s.from("product_variants").insert({
             product_id: sp.imported_product_id, sku: v.sku, external_variant_id: v.external_variant_id || null,
             color: v.color || null, size: v.size || null, color_hex: v.color_hex || null,
-            image_url: v.image || null, stock: v.stock ?? 0,
+            image_url: v.image || null, stock: v.stock ?? 0, weight: v.weight != null ? Number(v.weight) || null : null,
           }).then(() => {}, () => {});
           variantsInserted++;
         }

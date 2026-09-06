@@ -440,7 +440,7 @@ export async function GET(request: NextRequest) {
               .eq("product_id", id),
             supabase
               .from("supplier_products")
-              .select("supplier_id, external_id, supplier_url, raw")
+              .select("supplier_id, external_id, supplier_url, supplier_price, weight, updated_at, raw")
               .eq("imported_product_id", id)
               .eq("imported", true)
               .maybeSingle(),
@@ -465,7 +465,7 @@ export async function GET(request: NextRequest) {
           0
         );
 
-        const sp = supplierRes.data as { supplier_id?: string; external_id?: string; supplier_url?: string | null; raw?: { sku?: string } } | null;
+        const sp = supplierRes.data as { supplier_id?: string; external_id?: string; supplier_url?: string | null; supplier_price?: number | null; weight?: number | null; updated_at?: string | null; raw?: { sku?: string } } | null;
         return {
           ...productRes.data,
           reviews: reviewsRes.data || [],
@@ -479,6 +479,9 @@ export async function GET(request: NextRequest) {
           cj_product_id: sp?.external_id || null,
           cj_sku: sp?.raw?.sku || null,
           supplier_url: sp?.supplier_url || null,
+          supplier_cost: sp?.supplier_price ?? null,
+          supplier_weight: sp?.weight ?? null,
+          supplier_synced_at: sp?.updated_at || null,
         };
       }, null);
 

@@ -2,18 +2,12 @@ import { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+import { getAuthoritativeShippingCost } from "@/lib/shipping/quote";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-
-function computeShippingCost(subtotal: number, shippingMethod: string): number {
-  if (shippingMethod === "express") return 19.99;
-  if (shippingMethod === "overnight") return 39.99;
-  // standard: free above $100
-  return subtotal >= 100 ? 0 : 9.99;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -98,8 +92,15 @@ export async function POST(request: NextRequest) {
       subtotal += dbPrice * item.quantity;
     }
 
-    // Compute shipping server-side
-    const shippingCost = computeShippingCost(subtotal, shippingMethod ?? "standard");
+    // Compute shipping server-side using the real CJ freight (weight +
+    // destination) whenever possible — see lib/shipping/quote.ts.
+    const shippingQuote = await getAuthoritativeShippingCost({
+      items: items.map((i) => ({ productId: i.productId, variantId: i.variantId, quantity: i.quantity })),
+      shippingAddress: shippingAddress || {},
+      shippingMethod: shippingMethod ?? "standard",
+      subtotal,
+    });
+    const shippingCost = shippingQuote.cost;
 
     let discount = 0;
     if (couponCode) {
@@ -171,6 +172,8 @@ export async function POST(request: NextRequest) {
         payment_status: "pending",
         subtotal,
         shipping_cost: shippingCost,
+        shipping_quote_source: shippingQuote.source,
+        shipping_needs_review: shippingQuote.needsReview,
         discount,
         tax_amount: taxAmount,
         tax_details: taxDetails,

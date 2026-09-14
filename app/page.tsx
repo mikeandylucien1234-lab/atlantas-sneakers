@@ -20,9 +20,9 @@ export default function HomePage() {
       <DealsRanking />
       <TrendingNow />
       <BestSellersNewArrivals middle={<SpecialOffers />} />
-      <RecommendedForYou />
       <PromoSuggestions />
       <InfoDisclosure />
+      <RecommendedForYou />
     </>
   );
 }

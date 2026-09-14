@@ -43,15 +43,46 @@ export function ownerConfigured(): boolean {
 }
 
 // Validate the owner credentials (never hardcoded — env or config file).
+// Evaluates BOTH comparisons unconditionally (no &&-shortcircuit) so a wrong
+// email doesn't return measurably faster than a wrong password — a small but
+// real timing side-channel otherwise, given this gate has no other 2FA.
 export function checkOwnerCredentials(email: string, password: string): boolean {
   const cfg = ownerConfig();
   const OE = cfg.email;
   const OP = cfg.password;
   if (!OE || !OP) return false;
-  return (
-    safeEqual(email.trim().toLowerCase(), unquote(OE).trim().toLowerCase()) &&
-    safeEqual(password.trim(), unquote(OP).trim())
-  );
+  const emailOk = safeEqual(email.trim().toLowerCase(), unquote(OE).trim().toLowerCase());
+  const passwordOk = safeEqual(password.trim(), unquote(OP).trim());
+  return emailOk && passwordOk;
+}
+
+// Minimal in-process brute-force guard for the login endpoint: 5 failed
+// attempts per IP locks that IP out for 15 minutes. o2switch runs one
+// long-lived Node process, so this in-memory map is effective there (resets
+// only on a process restart, which is rare and fine — a genuine attacker
+// restarting the server to reset their own lockout isn't a realistic threat
+// model for this single-owner login).
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginAttempts = new Map<string, { count: number; firstAt: number }>();
+
+export function isLoginLocked(ip: string): { locked: boolean; retryAfterSec: number } {
+  const rec = loginAttempts.get(ip);
+  if (!rec) return { locked: false, retryAfterSec: 0 };
+  const elapsed = Date.now() - rec.firstAt;
+  if (elapsed > LOGIN_WINDOW_MS) { loginAttempts.delete(ip); return { locked: false, retryAfterSec: 0 }; }
+  if (rec.count >= LOGIN_MAX_ATTEMPTS) return { locked: true, retryAfterSec: Math.ceil((LOGIN_WINDOW_MS - elapsed) / 1000) };
+  return { locked: false, retryAfterSec: 0 };
+}
+
+export function recordFailedLogin(ip: string): void {
+  const rec = loginAttempts.get(ip);
+  if (!rec || Date.now() - rec.firstAt > LOGIN_WINDOW_MS) { loginAttempts.set(ip, { count: 1, firstAt: Date.now() }); return; }
+  rec.count += 1;
+}
+
+export function clearLoginAttempts(ip: string): void {
+  loginAttempts.delete(ip);
 }
 
 // Build a signed session token: "<expiry>.<hmac>".

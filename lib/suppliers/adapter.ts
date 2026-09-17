@@ -18,6 +18,7 @@ export class SupplierAdapter {
   async getTracking(_ref) { return { ok: false, message: "Supplier not connected." }; }
   async getInventory(_externalId) { return { ok: false, message: "Supplier not connected." }; }
   async getCategories() { return { ok: false, categories: [] }; }
+  async registerWebhook(_opts) { return { ok: false, message: "This supplier does not support webhook registration — use polling sync instead." }; }
 }
 
 // ---- Pricing engine (shared by all suppliers) ----

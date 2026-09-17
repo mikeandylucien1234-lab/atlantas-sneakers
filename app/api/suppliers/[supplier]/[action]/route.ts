@@ -252,11 +252,33 @@ export async function POST(request: NextRequest, { params }) {
       return Response.json({ ok: true });
     }
     if (action === "generate-webhook") {
+      // The token IS the verification mechanism: CJ's webhook API doesn't sign
+      // payloads with a shared secret, so instead of trusting a header we can't
+      // actually verify against CJ, the callback URL itself carries a random
+      // token that only someone who registered it (us, via CJ) would know.
       const secret = "cjwh_" + crypto.randomBytes(24).toString("hex");
-      const { data } = await s.from("supplier_webhooks").insert({ supplier_id: supplier, event: b.event || "order_shipped", url: b.url, secret_hash: crypto.createHash("sha256").update(secret).digest("hex"), secret_prefix: secret.slice(0, 12) + "…", created_by: actor.id }).select("id").single();
-      await s.from("supplier_connections").update({ webhook_status: "active", webhook_prefix: secret.slice(0, 12) + "…" }).eq("supplier_id", supplier);
-      await logAudit({ actor, module: "settings", action: "supplier_webhook", description: supplier, ip });
-      return Response.json({ ok: true, secret, id: data.id });
+      // Always server-generated with our own token — a client-supplied URL
+      // can't be trusted to carry the right verification token anyway.
+      const base = (process.env.NEXT_PUBLIC_SITE_URL || "https://atlantasneaker.com").replace(/\/$/, "");
+      const callbackUrl = `${base}/api/webhooks/suppliers/${supplier}?token=${secret}`;
+      const { data } = await s.from("supplier_webhooks").insert({ supplier_id: supplier, event: b.event || "order", url: callbackUrl, secret_hash: crypto.createHash("sha256").update(secret).digest("hex"), secret_prefix: secret.slice(0, 12) + "…", created_by: actor.id, status: "active" }).select("id").single();
+
+      // Actually tell CJ to push events to this URL — previously this action
+      // only stored a secret locally without ever registering it with CJ, so
+      // no webhook was truly wired up. Best-effort: the DB row + our receiver
+      // work either way (polling still covers it), but we report honestly
+      // whether CJ confirmed the registration.
+      let cjRegistered = false, cjMessage = null;
+      if (supplier === "cj") {
+        const adapter = getAdapter(supplier);
+        const reg = await adapter.registerWebhook({ callbackUrl, type: b.event || "order" });
+        cjRegistered = reg.ok; cjMessage = reg.message;
+        await s.from("supplier_webhooks").update({ status: reg.ok ? "active" : "pending_cj_confirmation" }).eq("id", data.id);
+      }
+
+      await s.from("supplier_connections").update({ webhook_status: cjRegistered ? "active" : "configured", webhook_prefix: secret.slice(0, 12) + "…" }).eq("supplier_id", supplier);
+      await logAudit({ actor, module: "settings", action: "supplier_webhook", description: `${supplier}: cjRegistered=${cjRegistered}`, ip });
+      return Response.json({ ok: true, secret, id: data.id, callbackUrl, cjRegistered, cjMessage });
     }
     if (action === "queue-action") {
       if (b.op === "retry") await s.from("supplier_sync_jobs").update({ status: "queued", error: null }).eq("id", b.id);

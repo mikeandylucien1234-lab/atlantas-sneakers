@@ -539,4 +539,20 @@ export class CJAdapter extends SupplierAdapter {
     try { const d = await cj("/product/getCategory", {}); const flat = []; (d?.data || []).forEach(l1 => (l1.categoryFirstList || []).forEach(l2 => (l2.categorySecondList || []).forEach(l3 => flat.push({ external_category_id: l3.categoryId, external_category: `${l1.categoryFirstName} / ${l3.categoryName}` })))); return { ok: true, categories: flat }; }
     catch (e) { return { ok: false, categories: [], message: e.message }; }
   }
+
+  // Register our callback URL with CJ so order/tracking updates push in real
+  // time instead of only via the polling cron. CJ's webhook API does not sign
+  // payloads with a shared secret we control, so the callback URL itself
+  // carries our verification token (?token=...) — the receiver checks that,
+  // not a signature header. Best-effort: never claims success CJ didn't confirm.
+  async registerWebhook({ callbackUrl, type = "order" } = {}) {
+    await this.hydrate();
+    if (!this.isConfigured()) return { ok: false, message: "CJ not connected." };
+    if (!callbackUrl) return { ok: false, message: "callbackUrl is required." };
+    try {
+      const d = await cj("/webhook/set", { method: "POST", body: { callbackUrls: [callbackUrl], type } });
+      const success = d?.result === true || d?.code === 200;
+      return { ok: !!success, message: d?.message ?? null, raw: d };
+    } catch (e) { return { ok: false, message: e.message }; }
+  }
 }

@@ -147,6 +147,18 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
       );
     }
   } catch {}
+  // Admin-entered CJ product page URL (the "View Store" link) — never
+  // invented, only persisted when the admin actually pasted one during
+  // import. Same https-only validation as the standalone "Configure Source"
+  // flow on the product detail page.
+  let supplierUrl = null;
+  if (overrides.supplier_url) {
+    try {
+      const u = new URL(String(overrides.supplier_url).trim());
+      if (u.protocol === "https:") supplierUrl = u.toString();
+    } catch { /* invalid URL — silently ignored, admin can add it later from Products */ }
+  }
+
   // Upsert the supplier_products cache and mark imported
   await s.from("supplier_products").upsert({
     supplier_id: supplierId, external_id: externalId, name: detail.name, description: detail.description,
@@ -154,6 +166,7 @@ export async function importProduct({ supplierId, externalId, overrides = {}, ac
     main_image: detail.main_image, images: detail.images || [], videos: detail.videos || [],
     weight: detail.weight, dimensions: detail.dimensions, specs: detail.specs || {}, processing_time: detail.processing_time,
     raw: detail, imported: true, imported_product_id: product.id,
+    ...(supplierUrl ? { supplier_url: supplierUrl } : {}),
   }, { onConflict: "supplier_id,external_id" });
   await s.from("supplier_inventory").upsert({ supplier_id: supplierId, external_id: externalId, product_id: product.id, stock: variants.reduce((a, v) => a + (v.stock || 0), 0), supplier_price: cost, synced_at: new Date().toISOString() }, { onConflict: "supplier_id,external_id,variant_sku" }).then(() => {}, () => {});
   await slog(s, { supplier_id: supplierId, action: "import", status: "ok", actor_id: actor?.id, actor_name: actor?.full_name || actor?.email, error: null });

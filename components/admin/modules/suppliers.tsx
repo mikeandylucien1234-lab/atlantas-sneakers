@@ -214,7 +214,8 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
     const overrides = { name: w.name, slug: w.slug || undefined, description: w.description, category_id: categoryId, brand_id: w.brand_id || undefined, tags: tags.length ? tags : undefined, price: w.price ?? undefined, compare_price: w.compare_price ?? undefined, supplier_price: w.supplier_price, images: w.images, meta_title: w.meta_title, meta_description: w.meta_description,
       is_featured: !!w.is_featured, is_new: !!w.is_new, is_trending: !!w.is_trending, is_best_seller: !!w.is_best_seller, flash_sale: !!(w.flash_sale || w.flash_deals),
       is_quickship: isQuick, local_stock: isQuick ? (totalStock || 20) : undefined, delivery_hours: isQuick ? 48 : undefined,
-      status: w.status, variants: w.variants, detail: w.detail };
+      status: w.status, variants: w.variants, detail: w.detail,
+      supplier_url: w.supplier_url && /^https:\/\//i.test(w.supplier_url.trim()) ? w.supplier_url.trim() : undefined };
     await post("/import", { external_id: w.external_id, overrides }, (r) => `Imported → product created`, () => { setWizard(null); loadDash(); });
   };
 
@@ -703,7 +704,22 @@ export function AdminSuppliers({ dark, initialView, focusSupplier }: Props) {
                 </div>;
               })()}
               {wizStep === 8 && <div className="space-y-2"><p className={cn("text-sm font-extrabold", txt)}>Review</p>{[["Name", wizard.name], ["Price", `$${wizard.price ?? "auto"}`], ["Images", wizard.images.length], ["Variants", wizard.variants.length], ["Status", wizard.status]].map(([l, v]) => <div key={l} className="flex justify-between text-xs"><span className={sub}>{l}</span><span className={cn("font-bold", txt)}>{v}</span></div>)}</div>}
-              {wizStep === 9 && <div className={cn("rounded-[10px] border p-4 text-center", brd)}><Package className={cn("w-8 h-8 mx-auto mb-2", txt)} /><p className={cn("text-sm font-bold", txt)}>Ready to publish</p><p className={cn("text-xs mt-1", sub)}>A real product will be created in your catalog with variants, images and pricing.</p></div>}
+              {wizStep === 9 && <div className="space-y-3">
+                <div className={cn("rounded-[10px] border p-4 text-center", brd)}><Package className={cn("w-8 h-8 mx-auto mb-2", txt)} /><p className={cn("text-sm font-bold", txt)}>Ready to publish</p><p className={cn("text-xs mt-1", sub)}>A real product will be created in your catalog with variants, images and pricing.</p></div>
+                <div>
+                  <label className={labelCls}>CJdropshipping Product Link (optional)</label>
+                  <input
+                    value={wizard.supplier_url || ""}
+                    onChange={e => setWizard(w => ({ ...w, supplier_url: e.target.value }))}
+                    className={inpCls}
+                    placeholder="https://www.cjdropshipping.com/product/...html"
+                  />
+                  {wizard.supplier_url && !/^https:\/\//i.test(wizard.supplier_url.trim()) && (
+                    <p className="text-[11px] text-red-500 mt-1">Must start with https://</p>
+                  )}
+                  <p className={cn("text-[11px] mt-1", sub)}>Paste the exact CJ product page URL (copy it from CJ's own site). Saved with this product so "View Store" in Admin → Products and in Orders always opens the right page — useful for placing the order manually later. You can add or edit it anytime from Products → Supplier / Product Source.</p>
+                </div>
+              </div>}
 
               <div className="flex items-center justify-between pt-2">
                 <button onClick={() => setWizStep(s => Math.max(0, s - 1))} disabled={wizStep === 0} className={btnGhost}><ChevronLeft className="w-3.5 h-3.5" /> Back</button>

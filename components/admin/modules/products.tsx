@@ -116,6 +116,7 @@ export function AdminProducts({ dark, onNavigate }: Props) {
   const [detailTab, setDetailTab] = useState<DetailTab>("general");
   const [detailData, setDetailData] = useState<Record<string, unknown> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(false);
 
   // Create / Edit form
   const [formOpen, setFormOpen] = useState(false);
@@ -532,13 +533,16 @@ export function AdminProducts({ dark, onNavigate }: Props) {
     setDetailProduct(prod);
     setDetailTab("general");
     setDetailLoading(true);
+    setDetailError(false);
+    setDetailData(null); // never show the previous product's data while this one loads
     try {
-      const res = await fetch(`/api/admin/products?section=detail&id=${prod.id}`);
+      const res = await fetch(`/api/admin/products?section=detail&id=${prod.id}`, { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to load details");
       const data = await res.json();
       setDetailData(data);
     } catch {
       setDetailData(null);
+      setDetailError(true);
     } finally {
       setDetailLoading(false);
     }
@@ -1186,6 +1190,13 @@ export function AdminProducts({ dark, onNavigate }: Props) {
               {detailLoading ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="w-6 h-6 animate-spin text-[#2563eb]" />
+                </div>
+              ) : detailError ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+                  <AlertTriangle className="w-7 h-7 text-[#ea7317]" />
+                  <p className={cn("text-sm font-semibold", txt)}>Failed to load product details</p>
+                  <p className={cn("text-xs max-w-xs", sub)}>This can happen if the database was briefly unreachable. Supplier info (if any) is saved — this just means it didn't load. Try again.</p>
+                  <button onClick={() => detailProduct && openDetail(detailProduct)} className="h-9 px-4 rounded-[10px] bg-[#2563eb] text-white text-[12px] font-semibold hover:bg-[#1d4ed8] transition-colors">Retry</button>
                 </div>
               ) : (
                 <DetailTabContent

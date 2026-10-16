@@ -2,6 +2,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 async function safeQuery<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try { return await fn(); } catch { return fallback; }
 }

@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 
+// Never statically cache — this serves per-request, per-admin data (and the
+// Supplier/Product Source panel in particular must never show a cached
+// "not configured" response after a product's CJ link was just saved).
+export const dynamic = "force-dynamic";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function safeQuery<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {

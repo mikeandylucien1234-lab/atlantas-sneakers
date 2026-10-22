@@ -46,6 +46,7 @@ interface ProductRow extends Product {
   supplier_id?: string | null;
   cj_product_id?: string | null;
   cj_sku?: string | null;
+  supplier_url?: string | null;
 }
 
 interface VariantRow {
@@ -827,8 +828,16 @@ export function AdminProducts({ dark, onNavigate }: Props) {
                               </button>
                               <p className={cn("text-[11px] truncate max-w-[200px]", sub)}>{prod.slug}</p>
                               {prod.supplier_id && (prod.cj_sku || prod.cj_product_id) && (
-                                <p className={cn("text-[10px] font-mono truncate max-w-[200px]", sub)} title="CJ SKU / Product ID — real, from the supplier, never invented">
-                                  CJ: {prod.cj_sku || prod.cj_product_id}
+                                <p className={cn("text-[10px] font-mono truncate max-w-[200px] flex items-center gap-1.5", sub)}>
+                                  <span title="CJ SKU / Product ID — real, from the supplier, never invented">CJ: {prod.cj_sku || prod.cj_product_id}</span>
+                                  {prod.supplier_url && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); if (prod.supplier_url) window.open(prod.supplier_url, "_blank", "noopener,noreferrer"); }}
+                                      className="text-[#16a34a] font-semibold hover:underline shrink-0"
+                                    >
+                                      View Store
+                                    </button>
+                                  )}
                                 </p>
                               )}
                               <div className="flex gap-1 mt-0.5">
@@ -1158,6 +1167,17 @@ export function AdminProducts({ dark, onNavigate }: Props) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {(() => {
+                  const url = detailData?.supplier_url as string | null | undefined;
+                  let isHttps = false;
+                  try { isHttps = !!url && new URL(url).protocol === "https:"; } catch { isHttps = false; }
+                  if (!isHttps) return null;
+                  return (
+                    <button onClick={() => window.open(url as string, "_blank", "noopener,noreferrer")} className="h-8 px-3 rounded-lg bg-[#16a34a] text-white text-[12px] font-semibold hover:bg-[#15803d] transition-colors flex items-center gap-1.5">
+                      <ExternalLink className="w-3.5 h-3.5" /> View Store
+                    </button>
+                  );
+                })()}
                 <button onClick={() => { setDetailProduct(null); openEdit(detailProduct); }} className="h-8 px-3 rounded-lg bg-[#2563eb] text-white text-[12px] font-semibold hover:bg-[#1d4ed8] transition-colors flex items-center gap-1.5">
                   <Edit3 className="w-3.5 h-3.5" /> Edit
                 </button>
